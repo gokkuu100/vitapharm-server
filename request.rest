@@ -1,0 +1,11 @@
+GET http://localhost:5000/api/vitapharm/home
+Content-Type: application/json
+
+###
+POST http://localhost:5000/api/vitapharm/signup
+Content-Type: application/json
+
+{
+    "email": "junior@gmail.com",
+    "password": "Junior100!"
+}

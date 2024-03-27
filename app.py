@@ -3,7 +3,6 @@ from flask_cors import CORS
 from flask_restx import Api
 from api.routes import ns as routes_ns
 from flask_jwt_extended import JWTManager
-from flask_bcrypt import Bcrypt
 from flask_migrate import Migrate
 from models import db
 from dotenv import load_dotenv
@@ -23,7 +22,6 @@ app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY')
 
 db.init_app(app)
 migrate = Migrate(app, db)
-bcrypt = Bcrypt(app)
 jwt = JWTManager(app)
 
 CORS(app, supports_credentials=True)
