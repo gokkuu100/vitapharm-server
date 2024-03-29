@@ -38,11 +38,12 @@ class AdminSignup(Resource):
 
             return make_response(jsonify({"message": "user created"}))
         except Exception as e:
+            db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
         
 
             
-@ns.route("/create")
+@ns.route("/products")
 class NewProduct(Resource):
     def post(self):
         try:
@@ -80,6 +81,129 @@ class NewProduct(Resource):
         except Exception as e:
             db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
+        
+    def get(self):
+        try:
+            # retrieves all the products
+            products = Product.query.all()
+            if not products:
+                return make_response(jsonify({"message": "No products found"}), 404)
+            
+            # products list
+            products_list = []
+            for product in products:
+                product_data = {
+                    "id": product.id,
+                    "name": product.name,
+                    "description": product.description,
+                    "price": product.price,
+                    "quantity": product.quantity,
+                    "admin_id": product.admin_id,
+                    "images": []
+                }
+                images = Image.query.filter_by(product_id=product.id).all()
+                for image in images:
+                    image_data = {
+                        "id": image.id,
+                        "data": base64.b64encode(image.data).decode('utf-8')
+                    }
+                    product_data["images"].append(image_data)
+                products_list.append(product_data)
+
+            return make_response(jsonify(products_list), 200)
+        except Exception as e:
+            print("Error fetching products")
+            db.session.rollback()
+            return make_response(jsonify({"error": str(e)}), 500)
+
+@ns.route( "/products/<int:productId>" )
+class SingleProduct(Resource):
+    def get(self, productId):
+        try:
+            # checks for specific product
+            singleProduct = Product.query.get(productId)
+            if not singleProduct:
+                return make_response(jsonify({"error": "Product not found"}), 404)
+            
+            # product data
+            product_data = {
+                "id": singleProduct.id,
+                "name": singleProduct.name,
+                "description": singleProduct.description,
+                "price": singleProduct.price,
+                "quantity": singleProduct.quantity,
+                "admin_id": singleProduct.admin_id,
+                "images": []
+            }
+            # retrieves images
+            images = Image.query.filter_by(product_id=singleProduct.id).all()
+            for image in images:
+                image_data = {
+                    "id": image.id,
+                    "data": base64.b64encode(image.data).decode('utf-8')
+                }
+                product_data["images"].append(image_data)
+
+            return make_response(jsonify(product_data), 200)
+        except Exception as e:
+            print("Error fetching product")
+            db.session.rollback()
+            return make_response(jsonify({"error": str(e)}), 500)
+        
+    def patch(self, productId):
+        try:
+            # Checks if product exists
+            product = Product.query.get(productId)
+            if not product:
+                return make_response(jsonify({"error": "Product not found"}), 404)
+            
+            # request data
+            data = request.get_json()
+            field = data.get('field')  # Field to update
+            value = data.get('value')  # New value 
+
+            # updates the specific field
+            if field == 'name':
+                product.name = value
+            elif field == 'description':
+                product.description = value
+            elif field == 'price':
+                product.price = value
+            elif field == 'quantity':
+                product.quantity = value
+            elif field == 'admin_id':
+                product.admin_id = value
+            else:
+                return make_response(jsonify({"error": "Invalid field provided"}), 400)
+
+            db.session.commit()
+
+            return make_response(jsonify({"message": f"{field} updated successfully"}), 200)
+        except Exception as e:
+            db.session.rollback()
+            return make_response(jsonify({"error": str(e)}), 500)
+        
+    def delete(self, productId):
+        try:
+            # check if product exists
+            product = Product.query.get(productId)
+            if not product:
+                return make_response(jsonify({"error": "Product not found"}), 404)
+
+            # deletes image
+            images = Image.query.filter_by(productId=product.id).all()
+            for image in images:
+                db.session.delete(image)
+
+            # deletes product 
+            db.session.delete(product)
+            db.session.commit()
+
+            return make_response(jsonify({"message": "Product deleted successfully"}), 200)
+        except Exception as e:
+            db.session.rollback()
+            return make_response(jsonify({"error": str(e)}), 500)
+
         
 
 

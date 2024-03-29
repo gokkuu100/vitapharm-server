@@ -9,3 +9,12 @@ Content-Type: application/json
     "email": "junior@gmail.com",
     "password": "Junior100!"
 }
+
+###
+PATCH http://localhost:5000/api/vitapharm/products/1
+Content-Type: application/json
+
+{
+    "field": "quantity",
+    "value": 26
+}
