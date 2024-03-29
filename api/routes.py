@@ -3,7 +3,7 @@ from flask_restx import Resource, Namespace
 from flask_jwt_extended import create_access_token
 from datetime import datetime
 from flask_bcrypt import Bcrypt
-from models import Admin, db
+from models import Admin, db, Product, Image
 import base64
 
 ns = Namespace("vitapharm", description="CRUD endpoints")
@@ -39,4 +39,47 @@ class AdminSignup(Resource):
             return make_response(jsonify({"message": "user created"}))
         except Exception as e:
             return make_response(jsonify({"error": str(e)}), 500)
+        
+
             
+@ns.route("/create")
+class NewProduct(Resource):
+    def post(self):
+        try:
+            if request.is_json:
+                data = request.get_json()
+            else:
+                data = {key: request.form[key] for key in request.form}
+
+            name = data.get('name') 
+            description = data.get('description')
+            price = int(data.get('price'))
+            quantity = data.get('quantity')
+            admin_id = data.get('admin_id')
+
+            if not all([name, description, price, quantity, admin_id]):
+                return make_response(jsonify({"error": "Missing required fields"}), 400)
+            
+            
+            new_product = Product(name=name, description=description, price=price, quantity=quantity, admin_id=admin_id)
+
+            db.session.add(new_product)
+            db.session.commit()
+
+            # save images
+            images = request.files.getlist("images")
+            for image in images:
+                if image.filename != '':
+                    image_data = image.read()
+                    new_image = Image(data=image_data, product_id=new_product.id)
+                    db.session.add(new_image)
+
+            db.session.commit()
+
+            return make_response(jsonify({"message": "Product created successfully"}), 201)
+        except Exception as e:
+            db.session.rollback()
+            return make_response(jsonify({"error": str(e)}), 500)
+        
+
+

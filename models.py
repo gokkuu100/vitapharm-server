@@ -38,11 +38,23 @@ class Product(db.Model, SerializerMixin):
     description = db.Column(db.Text())
     price = db.Column(db.Integer())
     quantity = db.Column(db.Integer())
-    image = db.Column(db.LargeBinary(length=16277215))
     admin_id = db.Column(db.ForeignKey("admin.id"), nullable=False)
 
     cartitems = db.relationship('CartItem', backref='products', lazy=True)
     orderitems = db.relationship('OrderItem', backref='products', lazy=True)
+    images= db.relationship('Image', backref='products', lazy=True)
+
+    def save_images(self, images):
+        for image in images:
+            image_data = image.read()
+            new_image = Image(data=image_data)
+            self.images.append(new_image)
+
+class Image(db.Model, SerializerMixin):
+    __tablename__ = "images"
+    id = db.Column(db.Integer, primary_key=True)
+    data = db.Column(db.LargeBinary(length=16277215))
+    product_id = db.Column(db.Integer, db.ForeignKey("products.id"))
 
 class Cart(db.Model, SerializerMixin):
     __tablename__ = "cart"
