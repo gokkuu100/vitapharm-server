@@ -57,14 +57,6 @@ class Product(db.Model, SerializerMixin):
             new_image = Image(data=image_data)
             self.images.append(new_image)
 
-    def get_current_price(self):
-        now = datetime.utcnow()
-        if self.deal_start_time and self.deal_end_time and self.deal_start_time <= now <= self.deal_end_time:
-            return self.deal_price
-        else:
-            return self.price
-
-
 
 class Image(db.Model, SerializerMixin):
     __tablename__ = "images"
