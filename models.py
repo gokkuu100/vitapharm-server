@@ -39,6 +39,7 @@ class Product(db.Model, SerializerMixin):
     price = db.Column(db.Integer())
     category = db.Column(db.String(64))
     sub_category = db.Column(db.String(64))
+    brand = db.Column(db.String(64))
     quantity = db.Column(db.Integer())
     admin_id = db.Column(db.ForeignKey("admin.id"), nullable=False)
 

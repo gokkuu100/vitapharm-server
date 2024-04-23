@@ -55,16 +55,17 @@ class NewProduct(Resource):
             name = data.get('name') 
             description = data.get('description')
             price = int(data.get('price'))
+            brand = data.get('brand')
             quantity = data.get('quantity')
             category = data.get('category')
             sub_category = data.get('sub_category')
             admin_id = data.get('admin_id')
 
-            if not all([name, description, price, quantity, admin_id, category, sub_category]):
+            if not all([name, description, price, quantity, admin_id, category, sub_category, brand]):
                 return make_response(jsonify({"error": "Missing required fields"}), 400)
             
             
-            new_product = Product(name=name, description=description, price=price, quantity=quantity, admin_id=admin_id, category=category, sub_category=sub_category)
+            new_product = Product(name=name, description=description, price=price, quantity=quantity, admin_id=admin_id, category=category, sub_category=sub_category, brand=brand)
 
             db.session.add(new_product)
             db.session.commit()
@@ -100,6 +101,7 @@ class NewProduct(Resource):
                     "description": product.description,
                     "price": product.price,
                     "quantity": product.quantity,
+                    "brand": product.brand,
                     "category": product.category,
                     "sub-category": product.sub_category,
                     "admin_id": product.admin_id,
@@ -136,6 +138,7 @@ class SingleProduct(Resource):
                 "description": singleProduct.description,
                 "price": singleProduct.price,
                 "quantity": singleProduct.quantity,
+                "brand": singleProduct.brand,
                 "category": singleProduct.category,
                 "sub-category": singleProduct.sub_category,
                 "admin_id": singleProduct.admin_id,
@@ -280,5 +283,51 @@ class UpdateCartItem(Resource):
             db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
         
-    
+# search filter
+@ns.route("/products/search")
+class ProductSearch(Resource):
+    def get(self):
+        try:
+            # Get the search query parameters
+            brand = request.args.get('brand')
+            category = request.args.get('category')
+            sub_category = request.args.get('sub_category')
 
+            # Query products based on category and sub-category
+            if category and sub_category:
+                products = Product.query.filter_by(category=category, sub_category=sub_category).all()
+            elif category:
+                products = Product.query.filter_by(category=category).all()
+            elif brand:
+                products = Product.query.filter_by(brand=brand).all()
+            else:
+                return make_response(jsonify({"error": "Please provide at least a category"}), 400)
+
+            # Prepare response data
+            products_list = []
+            for product in products:
+                product_data = {
+                    "id": product.id,
+                    "name": product.name,
+                    "description": product.description,
+                    "price": product.price,
+                    "quantity": product.quantity,
+                    "brand": product.brand,
+                    "category": product.category,
+                    "sub-category": product.sub_category,
+                    "admin_id": product.admin_id,
+                    "images": []
+                }
+                images = Image.query.filter_by(product_id=product.id).all()
+                for image in images:
+                    image_data = {
+                        "id": image.id,
+                        "data": base64.b64encode(image.data).decode('utf-8')
+                    }
+                    product_data["images"].append(image_data)
+                products_list.append(product_data)
+
+            return make_response(jsonify(products_list), 200)
+        except Exception as e:
+            db.session.rollback()
+            return make_response(jsonify({"error": str(e)}), 500)
