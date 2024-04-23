@@ -92,6 +92,15 @@ class OrderItem(db.Model, SerializerMixin):
     order_id = db.Column(db.ForeignKey('orders.id'))
     product_id = db.Column(db.ForeignKey('products.id'))
 
+class Appointment(db.Model, SerializerMixin):
+    __tablename__ = "appointment"
+    id = db.Column(db.Integer, primary_key=True)
+    customer_name = db.Column(db.String(128), nullable=False)
+    customer_email = db.Column(db.String(128), nullable=False)
+    customer_phone = db.Column(db.String(30), nullable=False)
+    date = db.Column(db.DateTime, nullable=False)
+
+
 # CheckConstraint
 # validations
     
