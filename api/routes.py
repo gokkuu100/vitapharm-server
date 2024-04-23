@@ -5,6 +5,7 @@ from datetime import datetime
 from flask_bcrypt import Bcrypt
 from models import Admin, db, Product, Image, CartItem
 import base64
+import datetime
 
 ns = Namespace("vitapharm", description="CRUD endpoints")
 bcrypt = Bcrypt()
@@ -168,30 +169,38 @@ class SingleProduct(Resource):
             
             # request data
             data = request.get_json()
-            field = data.get('field')  # Field to update
-            value = data.get('value')  # New value 
 
-            # updates the specific field
-            if field == 'name':
-                product.name = value
-            elif field == 'description':
-                product.description = value
-            elif field == 'price':
-                product.price = value
-            elif field == 'quantity':
-                product.quantity = value
-            elif field == 'admin_id':
-                product.admin_id = value
-            else:
-                return make_response(jsonify({"error": "Invalid field provided"}), 400)
+            # iterates through the data and updates
+            for field, value in data.items():
+                if field == 'deal_price':
+                    product.deal_price = value
+                elif field == 'deal_start_time':
+                    try:
+                        deal_start_time = datetime.strptime(value, "%Y-%m-%d")
+                        if product.deal_end_time and deal_start_time > product.deal_end_time:
+                            return make_response(jsonify({"error": "Deal start time cannot be after deal end time"}), 400)
+                        product.deal_start_time = deal_start_time
+                    except ValueError:
+                        return make_response(jsonify({"error": "Invalid date format for deal_start_time"}), 400)
+                elif field == 'deal_end_time':
+                    try:
+                        deal_end_time = datetime.strptime(value, "%Y-%m-%d")
+                        if product.deal_start_time and deal_end_time < product.deal_start_time:
+                            return make_response(jsonify({"error": "Deal end time cannot be before deal start time"}), 400)
+                        product.deal_end_time = deal_end_time
+                    except ValueError:
+                        return make_response(jsonify({"error": "Invalid date format for deal_end_time"}), 400)
+                else:
+                    # hanldes other field updates too
+                    setattr(product, field, value)  
 
             db.session.commit()
 
-            return make_response(jsonify({"message": f"{field} updated successfully"}), 200)
+            return make_response(jsonify({"message": "Product details updated successfully"}), 200)
         except Exception as e:
             db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
-        
+            
     def delete(self, productId):
         try:
             # check if product exists
@@ -254,14 +263,14 @@ class Cart(Resource):
 class UpdateCartItem(Resource):
     def post(self):
         try:
-            # retrieves sessionid from the cookies
+            # retrieves sessionId from cookies
             session_id = request.cookies.get("session_id")
 
             data = request.get_json()
             product_id = data.get('product_id')
-            quantity_change = data.get('quantity_change')  # This can be positive or negative
+            quantity_change = data.get('quantity_change')  
 
-            # Retrieve the cart item associated with the session ID and product ID
+            # Retrieves the cart item associated with the session ID and product ID
             cart_item = CartItem.query.filter_by(session_id=session_id, product_id=product_id).first()
 
             if cart_item:
@@ -288,12 +297,12 @@ class UpdateCartItem(Resource):
 class ProductSearch(Resource):
     def get(self):
         try:
-            # Get the search query parameters
+            # gets the search query parameters
             brand = request.args.get('brand')
             category = request.args.get('category')
             sub_category = request.args.get('sub_category')
 
-            # Query products based on category and sub-category
+            # queries products based on categories
             if category and sub_category:
                 products = Product.query.filter_by(category=category, sub_category=sub_category).all()
             elif category:
@@ -303,7 +312,7 @@ class ProductSearch(Resource):
             else:
                 return make_response(jsonify({"error": "Please provide at least a category"}), 400)
 
-            # Prepare response data
+            # response data
             products_list = []
             for product in products:
                 product_data = {
@@ -315,6 +324,53 @@ class ProductSearch(Resource):
                     "brand": product.brand,
                     "category": product.category,
                     "sub-category": product.sub_category,
+                    "admin_id": product.admin_id,
+                    "images": []
+                }
+                images = Image.query.filter_by(product_id=product.id).all()
+                for image in images:
+                    image_data = {
+                        "id": image.id,
+                        "data": base64.b64encode(image.data).decode('utf-8')
+                    }
+                    product_data["images"].append(image_data)
+                products_list.append(product_data)
+
+            return make_response(jsonify(products_list), 200)
+        except Exception as e:
+            db.session.rollback()
+            return make_response(jsonify({"error": str(e)}), 500)
+        
+# products on offer
+@ns.route("/products/offer")
+class ProductsOnOffer(Resource):
+    def get(self):
+        try:
+            today = datetime.date.today()
+
+            # queries products within the deal price dates
+            products = Product.query.filter(
+                Product.deal_price.isnot(None),
+                Product.deal_start_time <= today,
+                Product.deal_end_time >= today
+            ).all()
+
+            if not products:
+                return make_response(jsonify({"message": "No products currently on offer"}), 200)
+
+            # response data
+            products_list = []
+            for product in products:
+                product_data = {
+                    "id": product.id,
+                    "name": product.name,
+                    "description": product.description,
+                    "price": product.price,
+                    "deal_price": product.deal_price, 
+                    "quantity": product.quantity,
+                    "brand": product.brand,
+                    "category": product.category,
+                    "sub_category": product.sub_category,
                     "admin_id": product.admin_id,
                     "images": []
                 }

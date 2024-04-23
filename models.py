@@ -3,6 +3,7 @@ from sqlalchemy_serializer import SerializerMixin
 from sqlalchemy import CheckConstraint
 import re
 from sqlalchemy.orm import validates
+import datetime
 
 db = SQLAlchemy()
 
@@ -41,6 +42,9 @@ class Product(db.Model, SerializerMixin):
     sub_category = db.Column(db.String(64))
     brand = db.Column(db.String(64))
     quantity = db.Column(db.Integer())
+    deal_price = db.Column(db.Integer(), nullable=True, default=None)
+    deal_start_time = db.Column(db.DateTime(), nullable=True, default=None)
+    deal_end_time = db.Column(db.DateTime(), nullable=True, default=None)
     admin_id = db.Column(db.ForeignKey("admin.id"), nullable=False)
 
     cartitems = db.relationship('CartItem', backref='products', lazy=True)
@@ -52,6 +56,15 @@ class Product(db.Model, SerializerMixin):
             image_data = image.read()
             new_image = Image(data=image_data)
             self.images.append(new_image)
+
+    def get_current_price(self):
+        now = datetime.utcnow()
+        if self.deal_start_time and self.deal_end_time and self.deal_start_time <= now <= self.deal_end_time:
+            return self.deal_price
+        else:
+            return self.price
+
+
 
 class Image(db.Model, SerializerMixin):
     __tablename__ = "images"
