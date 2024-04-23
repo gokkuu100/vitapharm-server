@@ -37,6 +37,8 @@ class Product(db.Model, SerializerMixin):
     name = db.Column(db.String(64))
     description = db.Column(db.Text())
     price = db.Column(db.Integer())
+    category = db.Column(db.String(64))
+    sub_category = db.Column(db.String(64))
     quantity = db.Column(db.Integer())
     admin_id = db.Column(db.ForeignKey("admin.id"), nullable=False)
 
@@ -56,19 +58,12 @@ class Image(db.Model, SerializerMixin):
     data = db.Column(db.LargeBinary(length=16277215))
     product_id = db.Column(db.Integer, db.ForeignKey("products.id"))
 
-class Cart(db.Model, SerializerMixin):
-    __tablename__ = "cart"
-    id = db.Column(db.Integer, primary_key=True)
-    session_id = db.Column(db.Integer())
-
-    cartitems = db.relationship('CartItem', backref='cart', lazy=True)
-
 class CartItem(db.Model, SerializerMixin):
     __tablename__ = "cartitems"
     id = db.Column(db.Integer, primary_key=True)
     quantity = db.Column(db.Integer())
+    session_id = db.Column(db.String(128))
 
-    cart_id = db.Column(db.ForeignKey('cart.id'), nullable=False)
     product_id = db.Column(db.ForeignKey('products.id'), nullable=False)
 
 class Order(db.Model, SerializerMixin):
@@ -78,7 +73,8 @@ class Order(db.Model, SerializerMixin):
     customerLastName = db.Column(db.String(128), nullable=False)
     customerEmail = db.Column(db.String(128), nullable=False)
     address = db.Column(db.String(96), nullable=False)
-    city = db.Column(db.String(24), nullable=False)
+    town = db.Column(db.String(24), nullable=False)
+    phone = db.Column(db.String(30), nullable=False)
 
     orderitems = db.relationship('OrderItem', backref='orders', lazy=True)
 
@@ -92,3 +88,4 @@ class OrderItem(db.Model, SerializerMixin):
 
 # CheckConstraint
 # validations
+    

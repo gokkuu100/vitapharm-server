@@ -3,7 +3,7 @@ from flask_restx import Resource, Namespace
 from flask_jwt_extended import create_access_token
 from datetime import datetime
 from flask_bcrypt import Bcrypt
-from models import Admin, db, Product, Image
+from models import Admin, db, Product, Image, CartItem
 import base64
 
 ns = Namespace("vitapharm", description="CRUD endpoints")
@@ -56,13 +56,15 @@ class NewProduct(Resource):
             description = data.get('description')
             price = int(data.get('price'))
             quantity = data.get('quantity')
+            category = data.get('category')
+            sub_category = data.get('sub_category')
             admin_id = data.get('admin_id')
 
-            if not all([name, description, price, quantity, admin_id]):
+            if not all([name, description, price, quantity, admin_id, category, sub_category]):
                 return make_response(jsonify({"error": "Missing required fields"}), 400)
             
             
-            new_product = Product(name=name, description=description, price=price, quantity=quantity, admin_id=admin_id)
+            new_product = Product(name=name, description=description, price=price, quantity=quantity, admin_id=admin_id, category=category, sub_category=sub_category)
 
             db.session.add(new_product)
             db.session.commit()
@@ -98,6 +100,8 @@ class NewProduct(Resource):
                     "description": product.description,
                     "price": product.price,
                     "quantity": product.quantity,
+                    "category": product.category,
+                    "sub-category": product.sub_category,
                     "admin_id": product.admin_id,
                     "images": []
                 }
@@ -132,6 +136,8 @@ class SingleProduct(Resource):
                 "description": singleProduct.description,
                 "price": singleProduct.price,
                 "quantity": singleProduct.quantity,
+                "category": singleProduct.category,
+                "sub-category": singleProduct.sub_category,
                 "admin_id": singleProduct.admin_id,
                 "images": []
             }
@@ -203,7 +209,76 @@ class SingleProduct(Resource):
         except Exception as e:
             db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
-
         
+# adds items to cart
+@ns.route("/cart/add")
+class AddToCart(Resource):
+    def post(self):
+        try:
+            # retrieve sessionid from cookies
+            session_id = request.cookies.get("session_id", None) 
 
+            data = request.get_json()
+            product_id = data.get('product_id')
+            quantity = data.get('quantity', 1)
+
+            # Create a new cart item and associate it with the session ID
+            cart_item = CartItem(product_id=product_id, quantity=quantity, session_id=session_id)
+            db.session.add(cart_item)
+            db.session.commit()
+
+            return make_response(jsonify({"message": "Item added to cart successfully"}), 200)
+        except Exception as e:
+            db.session.rollback()
+            return make_response(jsonify({"error":  str(e)}), 500)
+    
+# retrives cart contents
+@ns.route("/cart")
+class Cart(Resource):
+    def get(self):
+        # retrieve sessionId from frontend
+        session_id = request.args.get('session_id')  
+
+        # filters cartitems with the sessionId
+        cart_items = CartItem.query.filter_by(session_id=session_id).all()
+
+
+        cart_contents = [{"product_id": item.product_id, "quantity": item.quantity} for item in cart_items]
+        return make_response(jsonify(cart_contents), 200)
+    
+# updates quantity of the cartitems
+@ns.route("/cart/update")
+class UpdateCartItem(Resource):
+    def post(self):
+        try:
+            # retrieves sessionid from the cookies
+            session_id = request.cookies.get("session_id")
+
+            data = request.get_json()
+            product_id = data.get('product_id')
+            quantity_change = data.get('quantity_change')  # This can be positive or negative
+
+            # Retrieve the cart item associated with the session ID and product ID
+            cart_item = CartItem.query.filter_by(session_id=session_id, product_id=product_id).first()
+
+            if cart_item:
+                if cart_item.quantity is None:
+                    cart_item.quantity = quantity_change
+                else:
+                    cart_item.quantity += quantity_change
+
+                # Ensure that the quantity does not go below 0
+                if cart_item.quantity < 0:
+                    cart_item.quantity = 0
+
+                db.session.commit()
+
+                return make_response(jsonify({"message": "Cart item quantity updated successfully"}), 200)
+            else:
+                return make_response(jsonify({"error": "Cart item not found"}), 404)
+        except Exception as e:
+            db.session.rollback()
+            return make_response(jsonify({"error": str(e)}), 500)
+        
+    
 
