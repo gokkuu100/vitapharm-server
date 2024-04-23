@@ -3,7 +3,7 @@ from flask_restx import Resource, Namespace
 from flask_jwt_extended import create_access_token
 from datetime import datetime
 from flask_bcrypt import Bcrypt
-from models import Admin, db, Product, Image, CartItem
+from models import Admin, db, Product, Image, CartItem, Appointment
 import base64
 import datetime
 
@@ -384,6 +384,55 @@ class ProductsOnOffer(Resource):
                 products_list.append(product_data)
 
             return make_response(jsonify(products_list), 200)
+        except Exception as e:
+            db.session.rollback()
+            return make_response(jsonify({"error": str(e)}), 500)
+
+# book appointment
+@ns.route("/book")
+class BookAppointment(Resource):
+    def post(self):
+        try:
+            data = request.get_json()
+            customer_name = data.get('customer_name')
+            customer_email = data.get('customer_email')
+            customer_phone = data.get('customer_phone')
+            date = data.get('phone')
+
+            if not all([customer_name, customer_email, customer_phone, date]):
+                return make_response(jsonify({"error": "Missing fields"}), 400)
+            
+            new_appointment = Appointment(
+                customer_name=customer_name,
+                customer_email=customer_email,
+                customer_phone=customer_phone,
+                date=date
+            )
+
+            db.session.add(new_appointment)
+            db.session.commit()
+            return make_response(jsonify({"message": "Appointment booked successfully"}), 201)
+        except Exception as e:
+            db.session.rollback()
+            return make_response(jsonify( {"error": str(e)}), 500)
+        
+    def get(self):
+        try:
+            appointments = Appointment.query.all()
+            if not appointments:
+                return make_response(jsonify({"message": "No appointments found"}), 404)
+            
+            appointment_list = []
+            for appointment in appointments:
+                appointment_data = {
+                    "id": appointment.id,
+                    "customer_name": appointment.customer_name,
+                    "customer_email": appointment.customer_email,
+                    "customer_phone": appointment.customer_name,
+                    "date": appointment.date
+                }
+                appointment_list.append(appointment_data)
+            return make_response(jsonify(appointment_list), 200)
         except Exception as e:
             db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
