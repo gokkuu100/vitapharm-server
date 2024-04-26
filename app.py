@@ -2,6 +2,8 @@ from flask import Flask
 from flask_cors import CORS
 from flask_restx import Api
 from api.routes import ns as routes_ns
+from flask import Flask
+from flask_mail import Mail, Message
 from flask_jwt_extended import JWTManager
 from flask_migrate import Migrate
 from models import db
@@ -19,6 +21,16 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAX_CONTENT_LENGTH'] = 16 * 10240 * 1024
 app.config['ALLOWED_EXTENSIONS'] = ALLOWED_EXTENSIONS
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY')
+app.config.update(dict(
+    DEBUG = True,
+    MAIL_SERVER = 'smtp.gmail.com',
+    MAIL_PORT = 587,
+    MAIL_USE_TLS = True,
+    MAIL_USE_SSL = False,
+    MAIL_USERNAME = os.getenv('MAIL_USERNAME'),
+    MAIL_PASSWORD = os.getenv('MAIL_PASSWORD'),
+))
+mail = Mail(app)
 
 db.init_app(app)
 migrate = Migrate(app, db)

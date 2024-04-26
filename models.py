@@ -98,7 +98,7 @@ class Appointment(db.Model, SerializerMixin):
     customer_name = db.Column(db.String(128), nullable=False)
     customer_email = db.Column(db.String(128), nullable=False)
     customer_phone = db.Column(db.String(30), nullable=False)
-    date = db.Column(db.DateTime, nullable=False)
+    appointment_date = db.Column(db.DateTime, nullable=False)
 
 
 # CheckConstraint

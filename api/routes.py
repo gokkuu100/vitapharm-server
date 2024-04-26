@@ -1,5 +1,6 @@
 from flask import request, jsonify, make_response
 from flask_restx import Resource, Namespace
+from flask_mail import Message
 from flask_jwt_extended import create_access_token
 from datetime import datetime
 from flask_bcrypt import Bcrypt
@@ -393,25 +394,33 @@ class ProductsOnOffer(Resource):
 class BookAppointment(Resource):
     def post(self):
         try:
+            from app import mail
+
             data = request.get_json()
             customer_name = data.get('customer_name')
             customer_email = data.get('customer_email')
             customer_phone = data.get('customer_phone')
-            date = data.get('phone')
+            appointment_date = data.get('appointment_date')
 
-            if not all([customer_name, customer_email, customer_phone, date]):
+            if not all([customer_name, customer_email, customer_phone, appointment_date]):
                 return make_response(jsonify({"error": "Missing fields"}), 400)
             
             new_appointment = Appointment(
                 customer_name=customer_name,
                 customer_email=customer_email,
                 customer_phone=customer_phone,
-                date=date
+                appointment_date=appointment_date
             )
 
             db.session.add(new_appointment)
             db.session.commit()
-            return make_response(jsonify({"message": "Appointment booked successfully"}), 201)
+            
+            # using flask-mail
+            msg = Message('Appointment Booking Confirmation', sender='Vitapharm <princewalter422@gmail.com>', recipients=[customer_email])
+            msg.body = f"""Hi {customer_name}, This email confirms your request for an appointment booking at Vitapharm. Kindly wait as you receive a confirmation call from us."""
+            mail.send(msg)
+            return make_response(jsonify({"message": "Appointment booked and confirmation email sent successfully"}), 201)
+        
         except Exception as e:
             db.session.rollback()
             return make_response(jsonify( {"error": str(e)}), 500)
@@ -436,3 +445,4 @@ class BookAppointment(Resource):
         except Exception as e:
             db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
+        
