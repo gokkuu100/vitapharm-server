@@ -4,7 +4,7 @@ from flask_mail import Message
 from flask_jwt_extended import create_access_token
 from datetime import datetime
 from flask_bcrypt import Bcrypt
-from models import Admin, db, Product, Image, CartItem, Appointment
+from models import Admin, db, Product, Image, CartItem, Appointment, Order, OrderItem
 import base64
 import datetime
 
@@ -255,8 +255,19 @@ class Cart(Resource):
         # filters cartitems with the sessionId
         cart_items = CartItem.query.filter_by(session_id=session_id).all()
 
-
-        cart_contents = [{"product_id": item.product_id, "quantity": item.quantity} for item in cart_items]
+        cart_contents = []
+        total_price = 0
+        for item in cart_items:
+            product = item.products
+            item_price = product.price * item.quantity
+            total_price += item_price
+            cart_contents.append({
+                "product_id": item.product_id,
+                "product_name": product.name,
+                "quantity": item.quantity,
+                "total_price": item_price
+            })
+        
         return make_response(jsonify(cart_contents), 200)
     
 # updates quantity of the cartitems
@@ -280,7 +291,7 @@ class UpdateCartItem(Resource):
                 else:
                     cart_item.quantity += quantity_change
 
-                # Ensure that the quantity does not go below 0
+                # Ensures that the quantity does not go below 0
                 if cart_item.quantity < 0:
                     cart_item.quantity = 0
 
@@ -292,6 +303,8 @@ class UpdateCartItem(Resource):
         except Exception as e:
             db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
+        
+
         
 # search filter
 @ns.route("/products/search")
@@ -419,6 +432,7 @@ class BookAppointment(Resource):
             msg = Message('Appointment Booking Confirmation', sender='Vitapharm <princewalter422@gmail.com>', recipients=[customer_email])
             msg.body = f"""Hi {customer_name}, This email confirms your request for an appointment booking at Vitapharm. Kindly wait as you receive a confirmation call from us."""
             mail.send(msg)
+
             return make_response(jsonify({"message": "Appointment booked and confirmation email sent successfully"}), 201)
         
         except Exception as e:
@@ -437,11 +451,109 @@ class BookAppointment(Resource):
                     "id": appointment.id,
                     "customer_name": appointment.customer_name,
                     "customer_email": appointment.customer_email,
-                    "customer_phone": appointment.customer_name,
-                    "date": appointment.date
+                    "customer_phone": appointment.customer_phone,
+                    "date": appointment.appointment_date
                 }
                 appointment_list.append(appointment_data)
             return make_response(jsonify(appointment_list), 200)
+        except Exception as e:
+            db.session.rollback()
+            return make_response(jsonify({"error": str(e)}), 500)
+        
+@ns.route("/order/place")
+class PlaceOrder(Resource):
+    def post(self):
+        try:
+            from app import mail
+
+            # retrieves session ID from cookies
+            session_id = request.cookies.get("session_id", None)
+
+            # checks if session ID exists
+            if not session_id:
+                return make_response(jsonify({"error": "Session ID not found"}), 400)
+
+            # querries cart items associated with the session ID
+            cart_items = CartItem.query.filter_by(session_id=session_id).all()
+
+            # checks if there are any items in the cart
+            if not cart_items:
+                return make_response(jsonify({"error": "Cart is empty"}), 400)
+
+            # gets user data from request body
+            data = request.get_json()
+            customerFirstName = data.get('customerFirstName')
+            customerLastName = data.get('customerLastName')
+            customerEmail = data.get('customerEmail')
+            address = data.get('address')
+            town = data.get('town')
+            phone = data.get('phone')
+
+            # checls if all data is provided
+            if not all([customerFirstName, customerLastName, customerEmail, address, town, phone]):
+                return make_response(jsonify({"error": "Missing user information"}), 400)
+
+            # creates new order
+            new_order = Order(
+                customerFirstName=customerFirstName,
+                customerLastName=customerLastName,
+                customerEmail=customerEmail,
+                address=address,
+                town=town,
+                phone=phone
+            )
+            db.session.add(new_order)
+
+            # calculates total order value
+            total_price = 0
+            for cart_item in cart_items:
+                product = cart_item.products
+                item_price = product.price * cart_item.quantity
+                total_price += item_price
+
+            # creates order items for each item
+            for cart_item in cart_items:
+                new_order_item = OrderItem(
+                    order_id=new_order.id,
+                    product_id=cart_item.product_id,
+                    quantity=cart_item.quantity
+                )
+                db.session.add(new_order_item)
+
+            # email 
+            order_details = f"""
+            Customer Name: {customerFirstName} {customerLastName}
+            Customer Email: {customerEmail}
+            Customer Phone: {phone}
+            Customer Address: {address}
+            Town: {town}
+
+            Order Items:
+            """
+            for cart_item in cart_items:
+                product = cart_item.products
+                order_details += f"\t- {product.name} (x{cart_item.quantity}) - Ksh{product.price:.2f}\n"
+
+            order_details += f"\nTotal Price: Ksh {total_price:.2f}"
+
+            # send email notification
+            msg = Message('New Order Placed!', sender='Vitapharm <princewalter422@gmail.com>', recipients=['wkurts247@gmail.com'])
+            msg.body = order_details
+            mail.send(msg)
+
+            # deletes cart items after order placement in the db
+            for cart_item in cart_items:
+                db.session.delete(cart_item)
+
+            db.session.commit()
+
+            # sends response with order details
+            return make_response(jsonify({
+                "message": "Order placed successfully",
+                "order_id": new_order.id,
+                "total_price": total_price
+            }), 201)
+
         except Exception as e:
             db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
