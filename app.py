@@ -8,6 +8,7 @@ from flask_jwt_extended import JWTManager
 from flask_migrate import Migrate
 from models import db
 from dotenv import load_dotenv
+from caching import cache
 import os
 
 # Loads dotenv file
@@ -30,6 +31,7 @@ app.config.update(dict(
     MAIL_USERNAME = os.getenv('MAIL_USERNAME'),
     MAIL_PASSWORD = os.getenv('MAIL_PASSWORD'),
 ))
+cache.init_app(app)
 mail = Mail(app)
 
 db.init_app(app)
