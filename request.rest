@@ -18,3 +18,30 @@ Content-Type: application/json
     "field": "quantity",
     "value": 26
 }
+
+###
+POST http://localhost:5000/api/vitapharm/products
+Content-Type: application/json
+
+{
+  "name": "Product Name",
+  "description": "Product Description",
+  "category": "Category",
+  "sub_category": "Subcategory",
+  "brand": "Brand",
+  "admin_id": 1,
+  "variations": [
+    {
+      "size": "Small",
+      "price": 10
+    },
+    {
+      "size": "Medium",
+      "price": 15
+    },
+    {
+      "size": "Large",
+      "price": 20
+    }
+  ]
+}
