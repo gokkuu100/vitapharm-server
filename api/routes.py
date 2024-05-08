@@ -5,11 +5,13 @@ from flask_jwt_extended import create_access_token
 from datetime import datetime
 from flask_bcrypt import Bcrypt
 from models import Admin, db, Product, Image, CartItem, Appointment, Order, OrderItem
+from caching import cache
 import base64
 import datetime
 
 ns = Namespace("vitapharm", description="CRUD endpoints")
 bcrypt = Bcrypt()
+
 
 @ns.route("/home")
 class Hello(Resource):
@@ -86,7 +88,8 @@ class NewProduct(Resource):
         except Exception as e:
             db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
-        
+    
+    @cache.cached(timeout=60*30, query_string=True)
     def get(self):
         try:
             # retrieves all the products
@@ -124,8 +127,9 @@ class NewProduct(Resource):
             db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
 
-@ns.route( "/products/<int:productId>" )
+@ns.route( "/products/<int:productId>")
 class SingleProduct(Resource):
+    @cache.cached(timeout=3600, key_prefix='single_product:%s')
     def get(self, productId):
         try:
             # checks for specific product
