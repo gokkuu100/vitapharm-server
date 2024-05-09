@@ -4,10 +4,11 @@ from flask_mail import Message
 from flask_jwt_extended import create_access_token
 from datetime import datetime
 from flask_bcrypt import Bcrypt
-from models import Admin, db, Product, Image, CartItem, Appointment, Order, OrderItem
+from models import Admin, db, Product, Image, CartItem, Appointment, Order, OrderItem, ProductVariation
 from caching import cache
 import base64
 import datetime
+import json
 
 ns = Namespace("vitapharm", description="CRUD endpoints")
 bcrypt = Bcrypt()
@@ -46,7 +47,6 @@ class AdminSignup(Resource):
             return make_response(jsonify({"error": str(e)}), 500)
         
 
-            
 @ns.route("/products")
 class NewProduct(Resource):
     def post(self):
@@ -60,16 +60,24 @@ class NewProduct(Resource):
             description = data.get('description')
             price = int(data.get('price'))
             brand = data.get('brand')
-            quantity = data.get('quantity')
             category = data.get('category')
             sub_category = data.get('sub_category')
             admin_id = data.get('admin_id')
 
-            if not all([name, description, price, quantity, admin_id, category, sub_category, brand]):
+            if not all([name, description, price, admin_id, category, sub_category, brand]):
                 return make_response(jsonify({"error": "Missing required fields"}), 400)
             
             
-            new_product = Product(name=name, description=description, price=price, quantity=quantity, admin_id=admin_id, category=category, sub_category=sub_category, brand=brand)
+            new_product = Product(name=name, description=description, price=price, admin_id=admin_id, category=category, sub_category=sub_category, brand=brand)
+
+            # Handle variations
+            variations_json = data.get('variations')
+            if variations_json:
+                variations = json.loads(variations_json)
+                for variation_data in variations:
+                    size = variation_data.get('size')
+                    variation_price = int(variation_data.get('price'))
+                    new_product.add_variation(size=size, price=variation_price)
 
             db.session.add(new_product)
             db.session.commit()
@@ -105,13 +113,23 @@ class NewProduct(Resource):
                     "name": product.name,
                     "description": product.description,
                     "price": product.price,
-                    "quantity": product.quantity,
                     "brand": product.brand,
                     "category": product.category,
                     "sub-category": product.sub_category,
                     "admin_id": product.admin_id,
+                    "variations": [],
                     "images": []
                 }
+                variations = ProductVariation.query.filter_by(product_id=product.id).all()
+                for item in variations:
+                    data = {
+                        "id": item.id,
+                        "size": item.size,
+                        "price": item.price
+                    }
+                    product_data["variations"].append(data)
+                products_list.append(product_data)
+
                 images = Image.query.filter_by(product_id=product.id).all()
                 for image in images:
                     image_data = {
@@ -143,13 +161,23 @@ class SingleProduct(Resource):
                 "name": singleProduct.name,
                 "description": singleProduct.description,
                 "price": singleProduct.price,
-                "quantity": singleProduct.quantity,
                 "brand": singleProduct.brand,
                 "category": singleProduct.category,
                 "sub-category": singleProduct.sub_category,
                 "admin_id": singleProduct.admin_id,
+                "variations": [],
                 "images": []
             }
+            # retrieves price variations
+            variations = ProductVariation.query.filter_by(product_id=singleProduct.id).all()
+            for item in variations:
+                data = {
+                    "id": item.id,
+                    "size": item.size,
+                    "price": item.price
+                }
+                product_data["variations"].append(data)
+    
             # retrieves images
             images = Image.query.filter_by(product_id=singleProduct.id).all()
             for image in images:
@@ -212,6 +240,11 @@ class SingleProduct(Resource):
             product = Product.query.get(productId)
             if not product:
                 return make_response(jsonify({"error": "Product not found"}), 404)
+            
+            # deletes variations
+            variations = ProductVariation.query.filter_by(productId=product.id).all()
+            for data in variations:
+                db.session.delete(data)
 
             # deletes image
             images = Image.query.filter_by(productId=product.id).all()
@@ -338,7 +371,6 @@ class ProductSearch(Resource):
                     "name": product.name,
                     "description": product.description,
                     "price": product.price,
-                    "quantity": product.quantity,
                     "brand": product.brand,
                     "category": product.category,
                     "sub-category": product.sub_category,
@@ -385,7 +417,6 @@ class ProductsOnOffer(Resource):
                     "description": product.description,
                     "price": product.price,
                     "deal_price": product.deal_price, 
-                    "quantity": product.quantity,
                     "brand": product.brand,
                     "category": product.category,
                     "sub_category": product.sub_category,

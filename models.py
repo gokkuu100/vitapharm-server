@@ -41,7 +41,6 @@ class Product(db.Model, SerializerMixin):
     category = db.Column(db.String(64))
     sub_category = db.Column(db.String(64))
     brand = db.Column(db.String(64))
-    quantity = db.Column(db.Integer())
     deal_price = db.Column(db.Integer(), nullable=True, default=None)
     deal_start_time = db.Column(db.DateTime(), nullable=True, default=None)
     deal_end_time = db.Column(db.DateTime(), nullable=True, default=None)
@@ -50,12 +49,41 @@ class Product(db.Model, SerializerMixin):
     cartitems = db.relationship('CartItem', backref='products', lazy=True)
     orderitems = db.relationship('OrderItem', backref='products', lazy=True)
     images= db.relationship('Image', backref='products', lazy=True)
+    variations = db.relationship('ProductVariation', backref='product', lazy=True)
 
     def save_images(self, images):
         for image in images:
             image_data = image.read()
             new_image = Image(data=image_data)
             self.images.append(new_image)
+
+    def add_variation(self, size, price):
+        variation = ProductVariation(size=size, price=price)
+        self.variations.append(variation)
+        return variation
+    
+    def remove_variation(self, variation):
+        self.variations.remove(variation)
+
+class ProductVariation(db.Model, SerializerMixin):
+    __tablename__ = "product_variations"
+    id = db.Column(db.Integer, primary_key=True)
+    size = db.Column(db.String(32))
+    price = db.Column(db.Integer())
+    product_id = db.Column(db.ForeignKey("products.id"), nullable=False)
+
+    @validates('size')
+    def validate_size(self, key, size):
+        if not size:
+            raise ValueError("Size cannot be empty.")
+        return size
+    
+    @validates('price')
+    def validate_price(self, key,price):
+        if price is None or price < 0:
+            raise ValueError("Price is required")
+        return price
+    
 
 
 class Image(db.Model, SerializerMixin):
