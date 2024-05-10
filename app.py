@@ -10,6 +10,7 @@ from models import db
 from dotenv import load_dotenv
 from caching import cache
 import os
+import datetime
 
 # Loads dotenv file
 load_dotenv()
@@ -28,8 +29,8 @@ app.config.update(dict(
     MAIL_PORT = 587,
     MAIL_USE_TLS = True,
     MAIL_USE_SSL = False,
-    MAIL_USERNAME = os.getenv('MAIL_USERNAME'),
-    MAIL_PASSWORD = os.getenv('MAIL_PASSWORD'),
+    MAIL_USERNAME = os.getenv("MAIL_USERNAME"),
+    MAIL_PASSWORD = os.getenv("MAIL_PASSWORD"),
 ))
 cache.init_app(app)
 mail = Mail(app)

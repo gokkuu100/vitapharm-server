@@ -7,8 +7,9 @@ from flask_bcrypt import Bcrypt
 from models import Admin, db, Product, Image, CartItem, Appointment, Order, OrderItem, ProductVariation
 from caching import cache
 import base64
-import datetime
+from datetime import datetime
 import json
+
 
 ns = Namespace("vitapharm", description="CRUD endpoints")
 bcrypt = Bcrypt()
@@ -441,9 +442,8 @@ class ProductsOnOffer(Resource):
 @ns.route("/book")
 class BookAppointment(Resource):
     def post(self):
+        from app import mail
         try:
-            from app import mail
-
             data = request.get_json()
             customer_name = data.get('customer_name')
             customer_email = data.get('customer_email')
@@ -452,7 +452,10 @@ class BookAppointment(Resource):
 
             if not all([customer_name, customer_email, customer_phone, appointment_date]):
                 return make_response(jsonify({"error": "Missing fields"}), 400)
-            
+
+            # Convert appointment_date_str to a Python datetime object
+            appointment_date = datetime.strptime(appointment_date, "%Y-%m-%d")
+
             new_appointment = Appointment(
                 customer_name=customer_name,
                 customer_email=customer_email,
@@ -462,17 +465,17 @@ class BookAppointment(Resource):
 
             db.session.add(new_appointment)
             db.session.commit()
-            
+
             # using flask-mail
-            msg = Message('Appointment Booking Confirmation', sender='Vitapharm <princewalter422@gmail.com>', recipients=[customer_email])
+            msg = Message('Appointment Booking Confirmation', sender='Vitapharm <seanmotanya@gmail.com>', recipients=[customer_email])
             msg.body = f"""Hi {customer_name}, This email confirms your request for an appointment booking at Vitapharm. Kindly wait as you receive a confirmation call from us."""
             mail.send(msg)
 
             return make_response(jsonify({"message": "Appointment booked and confirmation email sent successfully"}), 201)
-        
+
         except Exception as e:
             db.session.rollback()
-            return make_response(jsonify( {"error": str(e)}), 500)
+            return make_response(jsonify({"error": str(e)}), 500)
         
     def get(self):
         try:
