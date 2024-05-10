@@ -1,23 +1,47 @@
-from flask import request, jsonify, make_response
+from flask import request, jsonify, make_response, session
 from flask_restx import Resource, Namespace
 from flask_mail import Message
-from flask_jwt_extended import create_access_token
-from datetime import datetime
+from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required
+from jwt.exceptions import DecodeError
+from datetime import datetime, timedelta
 from flask_bcrypt import Bcrypt
 from models import Admin, db, Product, Image, CartItem, Appointment, Order, OrderItem, ProductVariation
 from caching import cache
 import base64
 import datetime
 import json
+import jwt
+import secrets
 
 ns = Namespace("vitapharm", description="CRUD endpoints")
 bcrypt = Bcrypt()
 
 
+# Function to generate JWT token for session
+def generate_session_token():
+    random_identity = secrets.token_urlsafe(16)
+    expires = timedelta(hours=1)
+    return create_access_token(random_identity, expires_delta=expires)
+
+# Function to extract session identity from JWT token
+def get_session_identity():
+    return get_jwt_identity()
+
+# Modify endpoints to use JWT for session management
+@ns.route("/session")
+class Session(Resource):
+    def get(self):
+        # Generate session token for the current session
+        session_token = generate_session_token()
+        # Store the session token in Flask session
+        session['session_token'] = session_token
+        return make_response(jsonify({"session_token": session_token}), 200)
+
 @ns.route("/home")
 class Hello(Resource):
     def get(self):
         return "Welcome to the first route"
+
 
 @ns.route("/signup")
 class AdminSignup(Resource):
@@ -112,10 +136,9 @@ class NewProduct(Resource):
                     "id": product.id,
                     "name": product.name,
                     "description": product.description,
-                    "price": product.price,
                     "brand": product.brand,
                     "category": product.category,
-                    "sub-category": product.sub_category,
+                    "sub_category": product.sub_category,
                     "admin_id": product.admin_id,
                     "variations": [],
                     "images": []
@@ -263,15 +286,15 @@ class SingleProduct(Resource):
 # adds items to cart
 @ns.route("/cart/add")
 class AddToCart(Resource):
+    @jwt_required(optional=True)
     def post(self):
         try:
-            # retrieve sessionid from cookies
-            session_id = request.cookies.get("session_id", None) 
-
             data = request.get_json()
             product_id = data.get('product_id')
             quantity = data.get('quantity', 1)
+            session_id = get_jwt_identity()
 
+        
             # Create a new cart item and associate it with the session ID
             cart_item = CartItem(product_id=product_id, quantity=quantity, session_id=session_id)
             db.session.add(cart_item)
@@ -285,27 +308,47 @@ class AddToCart(Resource):
 # retrives cart contents
 @ns.route("/cart")
 class Cart(Resource):
+    @jwt_required(optional=True)
     def get(self):
-        # retrieve sessionId from frontend
-        session_id = request.args.get('session_id')  
+        try:
 
-        # filters cartitems with the sessionId
-        cart_items = CartItem.query.filter_by(session_id=session_id).all()
+            # retrieve session token from frontend
+            session_identity=get_jwt_identity()
+            print(session_identity)
 
-        cart_contents = []
-        total_price = 0
-        for item in cart_items:
-            product = item.products
-            item_price = product.price * item.quantity
-            total_price += item_price
-            cart_contents.append({
-                "product_id": item.product_id,
-                "product_name": product.name,
-                "quantity": item.quantity,
-                "total_price": item_price
-            })
-        
-        return make_response(jsonify(cart_contents), 200)
+            # filters cartitems with the session token
+            cart_items = CartItem.query.filter_by(session_id=session_identity).all()
+
+            cart_contents = []
+            for item in cart_items:
+                product = item.products
+                variation = product.variations[0]  # Assuming only one variation per product for now
+                item_price = variation.price * item.quantity
+                
+                # Fetch image data for the product
+                images = Image.query.filter_by(product_id=product.id).all()
+                image_data = []
+                for image in images:
+                    image_data.append({
+                        "id": image.id,
+                        "data": base64.b64encode(image.data).decode('utf-8')
+                    })
+
+                cart_contents.append({
+                    "product_id": item.product_id,
+                    "product_name": product.name,
+                    "quantity": item.quantity,
+                    "variation_size": variation.size,
+                    "variation_price": variation.price,
+                    "total_price": item_price,
+                    "image_data0": image_data
+                })
+            
+            return make_response(jsonify(cart_contents), 200)
+        except DecodeError as e:
+            return make_response(jsonify({"error": "Invalid JWT token"}), 401)
+        except Exception as e:
+            return make_response(jsonify({"error": str(e)}), 500)
     
 # updates quantity of the cartitems
 @ns.route("/cart/update")
@@ -313,14 +356,14 @@ class UpdateCartItem(Resource):
     def post(self):
         try:
             # retrieves sessionId from cookies
-            session_id = request.cookies.get("session_id")
+            session_identity = get_session_identity()
 
             data = request.get_json()
             product_id = data.get('product_id')
             quantity_change = data.get('quantity_change')  
 
             # Retrieves the cart item associated with the session ID and product ID
-            cart_item = CartItem.query.filter_by(session_id=session_id, product_id=product_id).first()
+            cart_item = CartItem.query.filter_by(session_id=session_identity, product_id=product_id).first()
 
             if cart_item:
                 if cart_item.quantity is None:
