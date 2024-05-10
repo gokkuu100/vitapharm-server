@@ -17,23 +17,24 @@ ns = Namespace("vitapharm", description="CRUD endpoints")
 bcrypt = Bcrypt()
 
 
-# Function to generate JWT token for session
+
+# Generates JWT token for session
 def generate_session_token():
     random_identity = secrets.token_urlsafe(16)
     expires = timedelta(hours=1)
     return create_access_token(random_identity, expires_delta=expires)
 
-# Function to extract session identity from JWT token
+# Extracts session identity
 def get_session_identity():
     return get_jwt_identity()
 
-# Modify endpoints to use JWT for session management
+# JWT session-management
 @ns.route("/session")
 class Session(Resource):
     def get(self):
         # Generate session token for the current session
         session_token = generate_session_token()
-        # Store the session token in Flask session
+        # Stores the session token in Flask session
         session['session_token'] = session_token
         return make_response(jsonify({"session_token": session_token}), 200)
 
@@ -322,7 +323,7 @@ class Cart(Resource):
             cart_contents = []
             for item in cart_items:
                 product = item.products
-                variation = product.variations[0]  # Assuming only one variation per product for now
+                variation = product.variations[0]  
                 item_price = variation.price * item.quantity
                 
                 # Fetch image data for the product
