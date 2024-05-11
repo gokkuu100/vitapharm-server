@@ -48,3 +48,18 @@ Content-Type: application/json
 
 
 ### 
+
+
+### 
+
+
+###
+POST http://localhost:5000/api/vitapharm/book
+Content-Type: application/json
+
+{
+  "customer_name": "prince",
+  "customer_email": "wkurts247@gmail.com",
+  "customer_phone": "+254796564749",
+  "appointment_date": "2024-05-11"
+}
