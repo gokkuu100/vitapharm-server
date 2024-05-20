@@ -153,7 +153,6 @@ class NewProduct(Resource):
                         "price": item.price
                     }
                     product_data["variations"].append(data)
-                products_list.append(product_data)
 
                 images = Image.query.filter_by(product_id=product.id).all()
                 for image in images:
@@ -343,7 +342,7 @@ class Cart(Resource):
                     "variation_size": variation.size,
                     "variation_price": variation.price,
                     "total_price": item_price,
-                    "image_data0": image_data
+                    "image_data": image_data
                 })
             
             return make_response(jsonify(cart_contents), 200)
@@ -355,6 +354,7 @@ class Cart(Resource):
 # updates quantity of the cartitems
 @ns.route("/cart/update")
 class UpdateCartItem(Resource):
+    @jwt_required(optional=True)
     def post(self):
         try:
             # retrieves sessionId from cookies
@@ -398,15 +398,17 @@ class ProductSearch(Resource):
             category = request.args.get('category')
             sub_category = request.args.get('sub_category')
 
+            print(f"Brand: {brand}, Category: {category}, Sub-category: {sub_category}")  # Debugging line
+
             # queries products based on categories
-            if category and sub_category:
-                products = Product.query.filter_by(category=category, sub_category=sub_category).all()
-            elif category:
-                products = Product.query.filter_by(category=category).all()
-            elif brand:
-                products = Product.query.filter_by(brand=brand).all()
-            else:
-                return make_response(jsonify({"error": "Please provide at least a category"}), 400)
+            products = Product.query.filter((Product.brand == brand) | 
+                                            (Product.category == category) | 
+                                            (Product.sub_category == sub_category)).all()
+            
+            print(f"Products: {products}")
+
+            if not products:
+                return make_response(jsonify({"error": "No products found"}), 400)
 
             # response data
             products_list = []
@@ -511,7 +513,7 @@ class BookAppointment(Resource):
             db.session.commit()
 
             # using flask-mail
-            msg = Message('Appointment Booking Confirmation', sender='Vitapharm <seanmotanya@gmail.com>', recipients=[customer_email])
+            msg = Message('Appointment Booking Confirmation', sender='Vitapharm <sean.nyandusi@student.moringaschool.com>', recipients=[customer_email])
             msg.body = f"""Hi {customer_name}, This email confirms your request for an appointment booking at Vitapharm. Kindly wait as you receive a confirmation call from us."""
             mail.send(msg)
 
@@ -544,16 +546,17 @@ class BookAppointment(Resource):
         
 @ns.route("/order/place")
 class PlaceOrder(Resource):
+    @jwt_required(optional=True)
     def post(self):
         try:
             from app import mail
 
             # retrieves session ID from cookies
-            session_id = request.cookies.get("session_id", None)
+            session_id = get_session_identity()
 
             # checks if session ID exists
             if not session_id:
-                return make_response(jsonify({"error": "Session ID not found"}), 400)
+                return make_response(jsonify({"error": "Session tken not found"}), 400)
 
             # querries cart items associated with the session ID
             cart_items = CartItem.query.filter_by(session_id=session_id).all()
@@ -619,7 +622,7 @@ class PlaceOrder(Resource):
             order_details += f"\nTotal Price: Ksh {total_price:.2f}"
 
             # send email notification
-            msg = Message('New Order Placed!', sender='Vitapharm <princewalter422@gmail.com>', recipients=['wkurts247@gmail.com'])
+            msg = Message('New Order Placed!', sender='Vitapharm <sean.nyandusi@student.moringaschool.com>', recipients=[customerEmail])
             msg.body = order_details
             mail.send(msg)
 

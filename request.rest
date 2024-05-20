@@ -6,8 +6,8 @@ POST http://localhost:5000/api/vitapharm/signup
 Content-Type: application/json
 
 {
-    "email": "junior@gmail.com",
-    "password": "Biggysmall@100!"
+    "email": "plok@gmail.com",
+    "password": "O0uHrn1S3np@!"
 }
 
 ###
@@ -47,12 +47,6 @@ Content-Type: application/json
 }
 
 
-### 
-
-
-### 
-
-
 ###
 POST http://localhost:5000/api/vitapharm/book
 Content-Type: application/json
@@ -63,3 +57,57 @@ Content-Type: application/json
   "customer_phone": "+254796564749",
   "appointment_date": "2024-05-11"
 }
+
+
+###
+POST http://localhost:5000/api/vitapharm/products
+Content-Type: application/json
+
+{
+  "name": "Shea moisturizing Soap",
+  "description": "African body wsh soap",
+  "price": 750,
+  "brand": "Shea moisturizing",
+  "category": "body",
+  "sub_category": "soap",
+  "admin_id": 1
+  }
+
+
+###
+POST http://localhost:5000/api/vitapharm/products
+Content-Type: application/json
+
+{
+  "name": "Shea moisturizing Soap",
+  "description": "African body wsh soap",
+  "brand": "Shea moisturizing",
+  "category": "body",
+  "sub_category": "soap",
+  "admin_id": 1,
+  "variations": [
+    {
+      "size": "Small",
+      "price": 320
+    },
+    {
+      "size": "Medium",
+      "price": 470
+    },
+    {
+      "size": "Large",
+      "price": 750
+    }
+  ],
+  "images":[
+    {
+      "data":"/home/agent19music/Development/projects/VITAPHARM/vitapharm-client/public/prod6.jpg"
+    },
+    {
+      "data":"/home/agent19music/Development/projects/VITAPHARM/vitapharm-client/public/slide6.jpeg"
+    }
+  ]
+  }
+
+
+
