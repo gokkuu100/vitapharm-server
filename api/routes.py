@@ -546,7 +546,7 @@ class PlaceOrder(Resource):
             from app import mail
 
             # retrieves session ID from cookies
-            session_id = request.cookies.get("session_id", None)
+            session_id = get_jwt_identity()
 
             # checks if session ID exists
             if not session_id:
