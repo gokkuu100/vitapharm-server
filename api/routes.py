@@ -398,15 +398,17 @@ class ProductSearch(Resource):
             category = request.args.get('category')
             sub_category = request.args.get('sub_category')
 
+            print(f"Brand: {brand}, Category: {category}, Sub-category: {sub_category}")  # Debugging line
+
             # queries products based on categories
-            if category and sub_category:
-                products = Product.query.filter_by(category=category, sub_category=sub_category).all()
-            elif category:
-                products = Product.query.filter_by(category=category).all()
-            elif brand:
-                products = Product.query.filter_by(brand=brand).all()
-            else:
-                return make_response(jsonify({"error": "Please provide at least a category"}), 400)
+            products = Product.query.filter((Product.brand == brand) | 
+                                            (Product.category == category) | 
+                                            (Product.sub_category == sub_category)).all()
+            
+            print(f"Products: {products}")
+
+            if not products:
+                return make_response(jsonify({"error": "No products found"}), 400)
 
             # response data
             products_list = []
@@ -486,8 +488,8 @@ class ProductsOnOffer(Resource):
 @ns.route("/book")
 class BookAppointment(Resource):
     def post(self):
+        from app import mail
         try:
-            from app import mail
 
             data = request.get_json()
             customer_name = data.get('customer_name')
@@ -517,7 +519,7 @@ class BookAppointment(Resource):
         
         except Exception as e:
             db.session.rollback()
-            return make_response(jsonify( {"error": str(e)}), 500)
+            return make_response(jsonify({"error": str(e)}), 500)
         
     def get(self):
         try:
@@ -542,6 +544,7 @@ class BookAppointment(Resource):
         
 @ns.route("/order/place")
 class PlaceOrder(Resource):
+    @jwt_required(optional=True)
     def post(self):
         try:
             from app import mail
@@ -551,7 +554,7 @@ class PlaceOrder(Resource):
 
             # checks if session ID exists
             if not session_id:
-                return make_response(jsonify({"error": "Session ID not found"}), 400)
+                return make_response(jsonify({"error": "Session token not found"}), 400)
 
             # querries cart items associated with the session ID
             cart_items = CartItem.query.filter_by(session_id=session_id).all()
