@@ -342,7 +342,7 @@ class Cart(Resource):
                     "variation_size": variation.size,
                     "variation_price": variation.price,
                     "total_price": item_price,
-                    "image_data0": image_data
+                    "image_data": image_data
                 })
             
             return make_response(jsonify(cart_contents), 200)
@@ -354,6 +354,7 @@ class Cart(Resource):
 # updates quantity of the cartitems
 @ns.route("/cart/update")
 class UpdateCartItem(Resource):
+    @jwt_required(optional=True)
     def post(self):
         try:
             # retrieves sessionId from cookies
