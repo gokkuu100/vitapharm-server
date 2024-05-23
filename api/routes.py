@@ -1,7 +1,7 @@
 from flask import request, jsonify, make_response, session
 from flask_restx import Resource, Namespace
 from flask_mail import Message
-from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required
+from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required, create_refresh_token
 from jwt.exceptions import DecodeError
 from datetime import datetime, timedelta
 from flask_bcrypt import Bcrypt
@@ -21,8 +21,11 @@ bcrypt = Bcrypt()
 # Generates JWT token for session
 def generate_session_token():
     random_identity = secrets.token_urlsafe(16)
-    expires = timedelta(hours=1)
-    return create_access_token(random_identity, expires_delta=expires)
+    access_expires = timedelta(hours=1)
+    refresh_expires = timedelta(days=30)
+    access_token = create_access_token(identity=random_identity, expires_delta=access_expires)
+    refresh_token = create_refresh_token(identity=random_identity, expires_delta=refresh_expires)
+    return access_token, refresh_token
 
 # Extracts session identity
 def get_session_identity():
@@ -33,10 +36,18 @@ def get_session_identity():
 class Session(Resource):
     def get(self):
         # Generate session token for the current session
-        session_token = generate_session_token()
+        session_token, refresh_token = generate_session_token()
         # Stores the session token in Flask session
         session['session_token'] = session_token
-        return make_response(jsonify({"session_token": session_token}), 200)
+        return make_response(jsonify({"session_token": session_token, "refresh_token": refresh_token}), 200)
+    
+@ns.route("/session/refresh")
+class RefreshSession(Resource):
+    @jwt_required(refresh=True)
+    def post(self):
+        current_user = get_jwt_identity()
+        new_token = create_access_token(identity=current_user)
+        return make_response(jsonify({"session_token": new_token}), 200)
 
 @ns.route("/home")
 class Hello(Resource):
@@ -83,17 +94,16 @@ class NewProduct(Resource):
 
             name = data.get('name') 
             description = data.get('description')
-            price = int(data.get('price'))
             brand = data.get('brand')
             category = data.get('category')
             sub_category = data.get('sub_category')
             admin_id = data.get('admin_id')
 
-            if not all([name, description, price, admin_id, category, sub_category, brand]):
+            if not all([name, description, admin_id, category, sub_category, brand]):
                 return make_response(jsonify({"error": "Missing required fields"}), 400)
             
             
-            new_product = Product(name=name, description=description, price=price, admin_id=admin_id, category=category, sub_category=sub_category, brand=brand)
+            new_product = Product(name=name, description=description, admin_id=admin_id, category=category, sub_category=sub_category, brand=brand)
 
             # Handle variations
             variations_json = data.get('variations')

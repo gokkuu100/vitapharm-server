@@ -30,6 +30,7 @@ app.config['ALLOWED_EXTENSIONS'] = ALLOWED_EXTENSIONS
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY')
 app.config['SECRET_KEY'] = secrets.token_hex(16)
 app.config['JWT_TOKEN_LOCATION'] = ['headers', 'cookies']
+app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=30)
 app.config['JWT_COOKIE_CSRF_PROTECT'] = False 
 
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=30)

@@ -37,7 +37,6 @@ class Product(db.Model, SerializerMixin):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(64))
     description = db.Column(db.Text())
-    price = db.Column(db.Integer())
     category = db.Column(db.String(64))
     sub_category = db.Column(db.String(64))
     brand = db.Column(db.String(64))
