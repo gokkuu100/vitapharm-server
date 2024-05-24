@@ -12,6 +12,7 @@ import datetime
 import json
 import jwt
 import secrets
+from sqlalchemy import or_
 
 ns = Namespace("vitapharm", description="CRUD endpoints")
 bcrypt = Bcrypt()
@@ -395,7 +396,28 @@ class UpdateCartItem(Resource):
             db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
         
+# removed cartitems   
+@ns.route("/cart/remove")
+class RemoveFromCart(Resource):
+    @jwt_required(optional=True)
+    def post(self):
+        try:
+            data = request.get_json()
+            product_id = data.get('product_id')
+            session_id = get_jwt_identity()
 
+            # Find the cart item associated with the session ID and product ID
+            cart_item = CartItem.query.filter_by(session_id=session_id, product_id=product_id).first()
+
+            if cart_item:
+                db.session.delete(cart_item)
+                db.session.commit()
+                return make_response(jsonify({"message": "Item removed from cart successfully"}), 200)
+            else:
+                return make_response(jsonify({"error": "Cart item not found"}), 404)
+        except Exception as e:
+            db.session.rollback()
+            return make_response(jsonify({"error": str(e)}), 500)
         
 # search filter
 @ns.route("/products/search")
@@ -403,16 +425,31 @@ class ProductSearch(Resource):
     def get(self):
         try:
             # gets the search query parameters
-            brand = request.args.get('brand')
-            category = request.args.get('category')
-            sub_category = request.args.get('sub_category')
+            brand = request.args.get('brand', '')
+            category = request.args.get('category', '')
+            sub_category = request.args.get('sub_category', '')
+            name = request.args.get('name', '')
 
-            print(f"Brand: {brand}, Category: {category}, Sub-category: {sub_category}")  # Debugging line
+            print(f"Brand: {brand}, Category: {category}, Sub-category: {sub_category},  Name: {name}")  # Debugging line
 
-            # queries products based on categories
-            products = Product.query.filter((Product.brand == brand) | 
-                                            (Product.category == category) | 
-                                            (Product.sub_category == sub_category)).all()
+            # Create an empty list to hold filter conditions
+            filters = []
+
+            if brand:
+                filters.append(Product.brand.ilike(f"%{brand}%"))
+            if category:
+                filters.append(Product.category.ilike(f"%{category}%"))
+            if sub_category:
+                filters.append(Product.sub_category.ilike(f"%{sub_category}%"))
+            if name:
+                filters.append(Product.name.ilike(f"%{name}%"))
+
+            # Use and_ to combine filters with OR conditions
+            query = Product.query
+            if filters:
+                query = query.filter(or_(*filters))
+
+            products = query.all()
             
             print(f"Products: {products}")
 
