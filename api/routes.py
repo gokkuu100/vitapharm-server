@@ -120,11 +120,7 @@ class NewProduct(Resource):
 
             # save images
             images = request.files.getlist("images")
-            for image in images:
-                if image.filename != '':
-                    image_data = image.read()
-                    new_image = Image(data=image_data, product_id=new_product.id)
-                    db.session.add(new_image)
+            new_product.save_images(images, 'vitapharms3')
 
             db.session.commit()
 
@@ -163,15 +159,15 @@ class NewProduct(Resource):
                         "price": item.price
                     }
                     product_data["variations"].append(data)
-                products_list.append(product_data)
 
                 images = Image.query.filter_by(product_id=product.id).all()
                 for image in images:
                     image_data = {
                         "id": image.id,
-                        "data": base64.b64encode(image.data).decode('utf-8')
+                        "url": image.url
                     }
                     product_data["images"].append(image_data)
+                    
                 products_list.append(product_data)
 
             return make_response(jsonify(products_list), 200)
@@ -183,27 +179,28 @@ class NewProduct(Resource):
 @ns.route( "/products/<int:productId>")
 class SingleProduct(Resource):
     @cache.cached(timeout=3600, key_prefix='single_product:%s')
-    def get(self, productId):
+    def get(self, productId):  # <-- Add productId argument here
         try:
-            # checks for specific product
-            singleProduct = Product.query.get(productId)
-            if not singleProduct:
-                return make_response(jsonify({"error": "Product not found"}), 404)
-            
-            # product data
+            # Retrieve the product based on productId
+            product = Product.query.get(productId)
+            if not product:
+                return make_response(jsonify({"message": "Product not found"}), 404)
+
+            # Product data
             product_data = {
-                "id": singleProduct.id,
-                "name": singleProduct.name,
-                "description": singleProduct.description,
-                "brand": singleProduct.brand,
-                "category": singleProduct.category,
-                "sub-category": singleProduct.sub_category,
-                "admin_id": singleProduct.admin_id,
+                "id": product.id,
+                "name": product.name,
+                "description": product.description,
+                "brand": product.brand,
+                "category": product.category,
+                "sub_category": product.sub_category,
+                "admin_id": product.admin_id,
                 "variations": [],
                 "images": []
             }
-            # retrieves price variations
-            variations = ProductVariation.query.filter_by(product_id=singleProduct.id).all()
+
+            # Variations
+            variations = ProductVariation.query.filter_by(product_id=product.id).all()
             for item in variations:
                 data = {
                     "id": item.id,
@@ -211,13 +208,13 @@ class SingleProduct(Resource):
                     "price": item.price
                 }
                 product_data["variations"].append(data)
-    
-            # retrieves images
-            images = Image.query.filter_by(product_id=singleProduct.id).all()
+
+            # Images
+            images = Image.query.filter_by(product_id=product.id).all()
             for image in images:
                 image_data = {
                     "id": image.id,
-                    "data": base64.b64encode(image.data).decode('utf-8')
+                    "url": image.url
                 }
                 product_data["images"].append(image_data)
 
@@ -342,7 +339,7 @@ class Cart(Resource):
                 for image in images:
                     image_data.append({
                         "id": image.id,
-                        "data": base64.b64encode(image.data).decode('utf-8')
+                        "url": image.url
                     })
 
                 cart_contents.append({
@@ -473,7 +470,7 @@ class ProductSearch(Resource):
                 for image in images:
                     image_data = {
                         "id": image.id,
-                        "data": base64.b64encode(image.data).decode('utf-8')
+                        "url": image.url
                     }
                     product_data["images"].append(image_data)
                 products_list.append(product_data)
@@ -518,7 +515,7 @@ class ProductsOnOffer(Resource):
                 for image in images:
                     image_data = {
                         "id": image.id,
-                        "data": base64.b64encode(image.data).decode('utf-8')
+                        "url": image.url
                     }
                     product_data["images"].append(image_data)
                 products_list.append(product_data)
