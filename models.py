@@ -5,7 +5,25 @@ import re
 from sqlalchemy.orm import validates
 import datetime
 
+import boto3
+from botocore.exceptions import NoCredentialsError
+import uuid
+
+
 db = SQLAlchemy()
+
+def upload_to_s3(file, bucket_name):
+    s3 = boto3.client('s3')
+    try:
+        file_key = str(uuid.uuid4()) + file.filename
+        s3.upload_fileobj(
+            file,
+            bucket_name,
+            file_key
+        )
+        return f"https://{bucket_name}.s3.amazonaws.com/{file_key}"
+    except NoCredentialsError:
+        raise Exception("Credentials not available")
 
 class Admin(db.Model, SerializerMixin):
     __tablename__ = "admin"
@@ -50,10 +68,10 @@ class Product(db.Model, SerializerMixin):
     images= db.relationship('Image', backref='products', lazy=True)
     variations = db.relationship('ProductVariation', backref='product', lazy=True)
 
-    def save_images(self, images):
+    def save_images(self, images, bucket_name):
         for image in images:
-            image_data = image.read()
-            new_image = Image(data=image_data)
+            image_url = upload_to_s3(image, bucket_name)
+            new_image = Image(url=image_url)
             self.images.append(new_image)
 
     def add_variation(self, size, price):
@@ -88,7 +106,7 @@ class ProductVariation(db.Model, SerializerMixin):
 class Image(db.Model, SerializerMixin):
     __tablename__ = "images"
     id = db.Column(db.Integer, primary_key=True)
-    data = db.Column(db.LargeBinary(length=16277215))
+    url = db.Column(db.String(255), nullable=False)
     product_id = db.Column(db.Integer, db.ForeignKey("products.id"))
 
 class CartItem(db.Model, SerializerMixin):

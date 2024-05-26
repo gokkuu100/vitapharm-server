@@ -17,6 +17,9 @@ import requests
 from requests.auth import HTTPBasicAuth
 import base64
 
+import boto3
+import uuid
+
 # Loads dotenv file
 load_dotenv()
 
@@ -45,6 +48,9 @@ app.config.update(dict(
 ))
 cache.init_app(app)
 mail = Mail(app)
+
+s3 = boto3.client('s3')
+BUCKET_NAME = 'vitapharms3'
 
 db.init_app(app)
 migrate = Migrate(app, db)
