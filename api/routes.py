@@ -513,7 +513,7 @@ class BookAppointment(Resource):
             db.session.commit()
 
             # using flask-mail
-            msg = Message('Appointment Booking Confirmation', sender='Vitapharm <sean.nyandusi@student.moringaschool.com>', recipients=[customer_email])
+            msg = Message('Appointment Booking Confirmation', sender='Vitapharm <seanmotanya@gmail.com>', recipients=[customer_email])
             msg.body = f"""Hi {customer_name}, This email confirms your request for an appointment booking at Vitapharm. Kindly wait as you receive a confirmation call from us."""
             mail.send(msg)
 
@@ -622,7 +622,7 @@ class PlaceOrder(Resource):
             order_details += f"\nTotal Price: Ksh {total_price:.2f}"
 
             # send email notification
-            msg = Message('New Order Placed!', sender='Vitapharm <sean.nyandusi@student.moringaschool.com>', recipients=[customerEmail])
+            msg = Message('New Order Placed!', sender='Vitapharm <seanmotanya@gmail.com>', recipients=[customerEmail])
             msg.body = order_details
             mail.send(msg)
 
