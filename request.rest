@@ -6,8 +6,8 @@ POST http://localhost:5000/api/vitapharm/signup
 Content-Type: application/json
 
 {
-    "email": "prince@gmail.com",
-    "password": "StrongPassword123!"
+    "email": "example@prince.com",
+    "password": "Test@1234!"
 }
 
 ###

@@ -23,13 +23,6 @@ class Admin(db.Model, SerializerMixin):
             raise ValueError("Invalid email format")
         return email
 
-    @validates('password')
-    def validate_password(self, key, password):
-        if not password:
-            raise ValueError("Password is required")
-        if not re.match(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$", password):
-            raise ValueError("Password must contain at least one lowercase letter, one uppercase letter, one digit, one special character, and be at least 8 characters long")
-        return password
 
 
 class Product(db.Model, SerializerMixin):
