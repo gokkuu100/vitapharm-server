@@ -1,8 +1,8 @@
-"""previous db with binary images
+"""new tables and columns
 
-Revision ID: 1afea83d71ee
+Revision ID: 5b20c15c64a7
 Revises: 
-Create Date: 2024-05-26 16:43:49.083511
+Create Date: 2024-05-27 11:15:30.705817
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '1afea83d71ee'
+revision = '5b20c15c64a7'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -67,7 +67,7 @@ def upgrade():
     )
     op.create_table('images',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('data', sa.LargeBinary(length=16277215), nullable=True),
+    sa.Column('url', sa.String(length=255), nullable=False),
     sa.Column('product_id', sa.Integer(), nullable=True),
     sa.ForeignKeyConstraint(['product_id'], ['products.id'], ),
     sa.PrimaryKeyConstraint('id')
