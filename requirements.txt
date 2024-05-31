@@ -1,5 +1,6 @@
 alembic==1.13.1
 aniso8601==9.0.1
+async-timeout==4.0.3
 attrs==23.2.0
 awscli==1.32.113
 bcrypt==4.1.2
@@ -40,10 +41,12 @@ openpyxl==3.1.2
 pandas==2.2.2
 pyasn1==0.6.0
 PyJWT==2.8.0
+PyMySQL==1.1.1
 python-dateutil==2.9.0.post0
 python-dotenv==1.0.1
 pytz==2024.1
 PyYAML==6.0.1
+redis==5.0.4
 referencing==0.34.0
 requests==2.32.0
 rpds-py==0.18.0

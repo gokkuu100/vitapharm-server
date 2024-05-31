@@ -23,20 +23,21 @@ import uuid
 # Loads dotenv file
 load_dotenv()
 
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URI')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAX_CONTENT_LENGTH'] = 16 * 10240 * 1024
-app.config['ALLOWED_EXTENSIONS'] = ALLOWED_EXTENSIONS
+app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY')
 app.config['SECRET_KEY'] = secrets.token_hex(16)
 app.config['JWT_TOKEN_LOCATION'] = ['headers', 'cookies']
 app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=30)
 app.config['JWT_COOKIE_CSRF_PROTECT'] = False 
+app.config['CACHE_TYPE'] = 'redis'
+app.config['CACHE_REDIS_URL'] = os.getenv('REDIS_URL')
 
-app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=30)
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=60)
 app.config.update(dict(
     DEBUG = True,
     MAIL_SERVER = 'smtp.gmail.com',
@@ -50,7 +51,7 @@ cache.init_app(app)
 mail = Mail(app)
 
 s3 = boto3.client('s3')
-BUCKET_NAME = 'vitapharms3'
+BUCKET_NAME = os.getenv('S3_BUCKET_NAME')
 
 db.init_app(app)
 migrate = Migrate(app, db)
