@@ -130,51 +130,43 @@ class NewProduct(Resource):
     
     def get(self):
         try:
-            cached_products = redis_client.get('products')
-            if cached_products:
-                return make_response(jsonify(json.loads(cached_products)), 200)
-            else:
+            # Retrieves all the products
+            products = Product.query.all()
+            if not products:
+                return make_response(jsonify({"message": "No products found"}), 404)
 
-            # retrieves all the products
-                products = Product.query.all()
-                if not products:
-                    return make_response(jsonify({"message": "No products found"}), 404)
-            
-                # products list
-                products_list = []
-                for product in products:
-                    product_data = {
-                        "id": product.id,
-                        "name": product.name,
-                        "description": product.description,
-                        "brand": product.brand,
-                        "category": product.category,
-                        "sub_category": product.sub_category,
-                        "admin_id": product.admin_id,
-                        "variations": [],
-                        "images": []
+            # Products list
+            products_list = []
+            for product in products:
+                product_data = {
+                    "id": product.id,
+                    "name": product.name,
+                    "description": product.description,
+                    "brand": product.brand,
+                    "category": product.category,
+                    "sub_category": product.sub_category,
+                    "admin_id": product.admin_id,
+                    "variations": [],
+                    "images": []
+                }
+                variations = ProductVariation.query.filter_by(product_id=product.id).all()
+                for item in variations:
+                    data = {
+                        "id": item.id,
+                        "size": item.size,
+                        "price": item.price
                     }
-                    variations = ProductVariation.query.filter_by(product_id=product.id).all()
-                    for item in variations:
-                        data = {
-                            "id": item.id,
-                            "size": item.size,
-                            "price": item.price
-                        }
-                        product_data["variations"].append(data)
+                    product_data["variations"].append(data)
 
-                    images = Image.query.filter_by(product_id=product.id).all()
-                    for image in images:
-                        image_data = {
-                            "id": image.id,
-                            "url": image.url
-                        }
-                        product_data["images"].append(image_data)
-                        
-                    products_list.append(product_data)
-            
-                # Cache the products list
-                redis_client.set('products', json.dumps(products_list), ex=timedelta(minutes=5))
+                images = Image.query.filter_by(product_id=product.id).all()
+                for image in images:
+                    image_data = {
+                        "id": image.id,
+                        "url": image.url
+                    }
+                    product_data["images"].append(image_data)
+
+                products_list.append(product_data)
 
             return make_response(jsonify(products_list), 200)
         except Exception as e:
