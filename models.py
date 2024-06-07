@@ -95,7 +95,6 @@ class ProductVariation(db.Model, SerializerMixin):
         return price
     
 
-
 class Image(db.Model, SerializerMixin):
     __tablename__ = "images"
     id = db.Column(db.Integer, primary_key=True)

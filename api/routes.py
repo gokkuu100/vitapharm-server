@@ -6,7 +6,7 @@ from jwt.exceptions import DecodeError
 from datetime import datetime, timedelta
 from flask_bcrypt import Bcrypt
 from models import Admin, db, Product, Image, CartItem, Appointment, Order, OrderItem, ProductVariation
-from caching import cache
+from caching import redis_client
 import base64
 import datetime
 import json
@@ -16,7 +16,6 @@ from sqlalchemy import or_
 
 ns = Namespace("vitapharm", description="CRUD endpoints")
 bcrypt = Bcrypt()
-
 
 
 # Generates JWT token for session
@@ -129,46 +128,53 @@ class NewProduct(Resource):
             db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
     
-    @cache.cached(timeout=60*30, query_string=True)
     def get(self):
         try:
-            # retrieves all the products
-            products = Product.query.all()
-            if not products:
-                return make_response(jsonify({"message": "No products found"}), 404)
-            
-            # products list
-            products_list = []
-            for product in products:
-                product_data = {
-                    "id": product.id,
-                    "name": product.name,
-                    "description": product.description,
-                    "brand": product.brand,
-                    "category": product.category,
-                    "sub_category": product.sub_category,
-                    "admin_id": product.admin_id,
-                    "variations": [],
-                    "images": []
-                }
-                variations = ProductVariation.query.filter_by(product_id=product.id).all()
-                for item in variations:
-                    data = {
-                        "id": item.id,
-                        "size": item.size,
-                        "price": item.price
-                    }
-                    product_data["variations"].append(data)
+            cached_products = redis_client.get('products')
+            if cached_products:
+                return make_response(jsonify(json.loads(cached_products)), 200)
+            else:
 
-                images = Image.query.filter_by(product_id=product.id).all()
-                for image in images:
-                    image_data = {
-                        "id": image.id,
-                        "url": image.url
+            # retrieves all the products
+                products = Product.query.all()
+                if not products:
+                    return make_response(jsonify({"message": "No products found"}), 404)
+            
+                # products list
+                products_list = []
+                for product in products:
+                    product_data = {
+                        "id": product.id,
+                        "name": product.name,
+                        "description": product.description,
+                        "brand": product.brand,
+                        "category": product.category,
+                        "sub_category": product.sub_category,
+                        "admin_id": product.admin_id,
+                        "variations": [],
+                        "images": []
                     }
-                    product_data["images"].append(image_data)
-                    
-                products_list.append(product_data)
+                    variations = ProductVariation.query.filter_by(product_id=product.id).all()
+                    for item in variations:
+                        data = {
+                            "id": item.id,
+                            "size": item.size,
+                            "price": item.price
+                        }
+                        product_data["variations"].append(data)
+
+                    images = Image.query.filter_by(product_id=product.id).all()
+                    for image in images:
+                        image_data = {
+                            "id": image.id,
+                            "url": image.url
+                        }
+                        product_data["images"].append(image_data)
+                        
+                    products_list.append(product_data)
+            
+                # Cache the products list
+                redis_client.set('products', json.dumps(products_list), ex=timedelta(minutes=5))
 
             return make_response(jsonify(products_list), 200)
         except Exception as e:
@@ -178,7 +184,7 @@ class NewProduct(Resource):
 
 @ns.route( "/products/<int:productId>")
 class SingleProduct(Resource):
-    @cache.cached(timeout=3600, key_prefix='single_product:%s')
+    # @cache.cached(timeout=3600, key_prefix='single_product:%s')
     def get(self, productId):  # <-- Add productId argument here
         try:
             # Retrieve the product based on productId

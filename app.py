@@ -8,7 +8,6 @@ from flask_jwt_extended import JWTManager
 from flask_migrate import Migrate
 from models import db
 from dotenv import load_dotenv
-from caching import cache
 from datetime import timedelta, datetime
 import os
 import secrets
@@ -34,8 +33,6 @@ app.config['SECRET_KEY'] = secrets.token_hex(16)
 app.config['JWT_TOKEN_LOCATION'] = ['headers', 'cookies']
 app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=30)
 app.config['JWT_COOKIE_CSRF_PROTECT'] = False 
-app.config['CACHE_TYPE'] = 'redis'
-app.config['CACHE_REDIS_URL'] = os.getenv('REDIS_URL')
 
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=60)
 app.config.update(dict(
@@ -47,7 +44,7 @@ app.config.update(dict(
     MAIL_USERNAME = os.getenv('MAIL_USERNAME'),
     MAIL_PASSWORD = os.getenv('MAIL_PASSWORD'),
 ))
-cache.init_app(app)
+# cache.init_app(app)
 mail = Mail(app)
 
 s3 = boto3.client('s3')
