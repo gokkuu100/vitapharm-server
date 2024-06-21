@@ -3,7 +3,7 @@ from flask_cors import CORS
 from flask_restx import Api
 from api.routes import ns as routes_ns
 from flask import Flask
-from flask_mail import Mail, Message
+from flask_mail import Mail
 from flask_jwt_extended import JWTManager
 from flask_migrate import Migrate
 from models import db
@@ -17,7 +17,6 @@ from requests.auth import HTTPBasicAuth
 import base64
 
 import boto3
-import uuid
 
 # Loads dotenv file
 load_dotenv()
@@ -116,7 +115,7 @@ def getAccessToken():
     return my_access_token
 
 if __name__ == '__main__':
-    app.run(port=os.getenv('PORT'), debug=True)
+    app.run(debug=True, host='0.0.0.0', port=8080)
 
 
 

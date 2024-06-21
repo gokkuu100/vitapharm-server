@@ -6,11 +6,8 @@ from jwt.exceptions import DecodeError
 from datetime import datetime, timedelta
 from flask_bcrypt import Bcrypt
 from models import Admin, db, Product, Image, CartItem, Appointment, Order, OrderItem, ProductVariation
-from caching import redis_client
-import base64
 import datetime
 import json
-import jwt
 import secrets
 from sqlalchemy import or_
 
