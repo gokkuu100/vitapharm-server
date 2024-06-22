@@ -644,8 +644,8 @@ class PlaceOrder(Resource):
             # calculates total order value
             total_price = 0
             for cart_item in cart_items:
-                product = cart_item.products
-                item_price = product.price * cart_item.quantity
+                product_variation = cart_item.product_variation
+                item_price = product_variation.price * cart_item.quantity
                 total_price += item_price
 
             # creates order items for each item

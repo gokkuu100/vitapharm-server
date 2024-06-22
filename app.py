@@ -64,7 +64,7 @@ api = Api(app, title="Vitapharm API", description="List of available endpoints f
 api.add_namespace(routes_ns)
 
 # run ngrok: ngrok http http://localhost:5000
-my_endpoint = "https://3482-197-237-11-90.ngrok-free.app"
+my_endpoint = "https://5b62-197-237-11-90.ngrok-free.app"
 
 @app.route("/prince")
 def home():
@@ -107,7 +107,7 @@ def MpesaExpress():
 @app.route("/callback", methods=["POST"])
 def callback_url():
     data = request.get_json()
-    print(data)
+    print("CallbackData:", data)
     return make_response(jsonify({"ResultCode": 0, "ResultDesc": "Accepted"}), 200)
 
 # getAccessToken
