@@ -10,6 +10,9 @@ import datetime
 import json
 import secrets
 from sqlalchemy import or_
+from sqlalchemy.orm import joinedload
+import logging
+import time
 
 ns = Namespace("vitapharm", description="CRUD endpoints")
 bcrypt = Bcrypt()
@@ -127,11 +130,19 @@ class NewProduct(Resource):
     
     def get(self):
         try:
+            start_time = time.time()
+            logging.info('Fetching products')
+
             # Retrieves all the products
-            products = Product.query.all()
+            products = Product.query.options(
+            joinedload(Product.variations),
+            joinedload(Product.images)
+            ).all()
+
             if not products:
                 return make_response(jsonify({"message": "No products found"}), 404)
 
+            logging.info(f"Products fetched in {time.time() - start_time} seconds")
             # Products list
             products_list = []
             for product in products:
@@ -146,7 +157,10 @@ class NewProduct(Resource):
                     "variations": [],
                     "images": []
                 }
+                var_start_time = time.time()
                 variations = ProductVariation.query.filter_by(product_id=product.id).all()
+                logging.info(f"Variations fetched for product {product.id} in {time.time() - var_start_time} seconds")
+
                 for item in variations:
                     data = {
                         "id": item.id,
@@ -155,7 +169,10 @@ class NewProduct(Resource):
                     }
                     product_data["variations"].append(data)
 
+                img_start_time = time.time()
                 images = Image.query.filter_by(product_id=product.id).all()
+                logging.info(f"Images fetched for product {product.id} in {time.time() - img_start_time} seconds")
+
                 for image in images:
                     image_data = {
                         "id": image.id,
@@ -165,6 +182,7 @@ class NewProduct(Resource):
 
                 products_list.append(product_data)
 
+            logging.info(f"Total request time: {time.time() - start_time} seconds")
             return make_response(jsonify(products_list), 200)
         except Exception as e:
             print("Error fetching products")
