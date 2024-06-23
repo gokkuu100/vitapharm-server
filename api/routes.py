@@ -13,10 +13,21 @@ from sqlalchemy import or_
 from sqlalchemy.orm import joinedload
 import logging
 import time
+import requests
+from requests.auth import HTTPBasicAuth
+import base64
 
 ns = Namespace("vitapharm", description="CRUD endpoints")
 bcrypt = Bcrypt()
 
+#darajaAPI
+def getAccessToken():
+    consumer_key = "xyyfojxRcUqE57AMT1qAlc6WLKSXZGGzwUReLA2uCQAbmqaN"
+    consumer_secret = "cl8uGswLYcvNAEQZDQxLBfadKxJXp8oMANWy4P8OTqdcT7V8vpDjckWyDxzAYwgZ"
+    api_URL = "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
+    r = requests.get(api_URL, auth=HTTPBasicAuth(consumer_key, consumer_secret))
+    my_access_token = r.json()['access_token']
+    return my_access_token
 
 # Generates JWT token for session
 def generate_session_token():
@@ -633,9 +644,10 @@ class PlaceOrder(Resource):
             address = data.get('address')
             town = data.get('town')
             phone = data.get('phone')
+            deliverycost = data.get('deliverycost')
 
             # checls if all data is provided
-            if not all([customerFirstName, customerLastName, customerEmail, address, town, phone]):
+            if not all([customerFirstName, customerLastName, customerEmail, address, town, phone, deliverycost]):
                 return make_response(jsonify({"error": "Missing user information"}), 400)
 
             # creates new order
@@ -645,12 +657,13 @@ class PlaceOrder(Resource):
                 customerEmail=customerEmail,
                 address=address,
                 town=town,
-                phone=phone
+                phone=phone,
+                deliverycost=deliverycost
             )
             db.session.add(new_order)
 
             # calculates total order value
-            total_price = 0
+            total_price = deliverycost
             for cart_item in cart_items:
                 variation = cart_item.variation
                 item_price = variation.price * cart_item.quantity
@@ -680,6 +693,7 @@ class PlaceOrder(Resource):
                 variation = cart_item.variation
                 order_details += f"\t- {product.name} ({variation.size}) (x{cart_item.quantity}) - Ksh{variation.price:.2f}\n"
 
+            order_details += f"\nDelivery Cost: Ksh {deliverycost:.2f}"
             order_details += f"\nTotal Price: Ksh {total_price:.2f}"
 
             # send email notification
@@ -704,3 +718,181 @@ class PlaceOrder(Resource):
             db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
         
+@ns.route("/order/pay")
+class LipaNaMpesa(Resource):
+    @jwt_required(optional=True)
+    def post(self):
+        try:
+            # retrieves session ID from cookies
+            session_id = get_jwt_identity()
+
+            # checks if session ID exists
+            if not session_id:
+                return make_response(jsonify({"error": "Session token not found"}), 400)
+
+            # queries cart items associated with the session ID
+            cart_items = CartItem.query.filter_by(session_id=session_id).all()
+
+            # checks if there are any items in the cart
+            if not cart_items:
+                return make_response(jsonify({"error": "Cart is empty"}), 400)
+
+            # gets user data from request body
+            data = request.get_json()
+            customerFirstName = data.get('customerFirstName')
+            customerLastName = data.get('customerLastName')
+            customerEmail = data.get('customerEmail')
+            address = data.get('address')
+            town = data.get('town')
+            phone = data.get('phone')
+            deliverycost = data.get('deliverycost')
+
+            # checks if all data is provided
+            if not all([customerFirstName, customerLastName, customerEmail, address, town, phone, deliverycost]):
+                return make_response(jsonify({"error": "Missing user information"}), 400)
+
+            # calculates total order value
+            total_price = deliverycost
+            for cart_item in cart_items:
+                variation = cart_item.variation
+                item_price = variation.price * cart_item.quantity
+                total_price += item_price
+
+            # creates new order (not yet saved to DB)
+            new_order = Order(
+                customerFirstName=customerFirstName,
+                customerLastName=customerLastName,
+                customerEmail=customerEmail,
+                address=address,
+                town=town,
+                phone=phone,
+                deliverycost=deliverycost
+            )
+
+            db.session.add(new_order)
+            db.session.flush()  # Ensure new_order.id is available
+
+            # initiate STK Push
+            response = self.send_stk_push(phone, total_price, new_order.id)
+
+            if response.get("ResponseCode") == "0":
+                # save order temporarily
+                db.session.commit()
+
+                return make_response(jsonify({
+                    "message": "STK Push initiated successfully. Awaiting payment confirmation.",
+                    "order_id": new_order.id,
+                    "total_price": total_price
+                }), 200)
+            else:
+                db.session.rollback()
+                return make_response(jsonify({"error": "Failed to initiate STK Push"}), 500)
+
+        except Exception as e:
+            db.session.rollback()
+            return make_response(jsonify({"error": str(e)}), 500)
+        
+    @classmethod
+    @ns.route("/send_stk_push", methods=['POST']) 
+    def send_stk_push(self, phone, amount, order_id):
+        try:
+            endpoint = "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
+            access_token = getAccessToken()
+            headers = {"Authorization": "Bearer %s" % access_token}
+            time = datetime.now()
+            timestamp = time.strftime("%Y%m%d%H%M%S")
+            password = "174379" + "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919" + timestamp
+            password = base64.b64encode(password.encode('utf-8')).decode('utf-8')
+
+            data = {
+                "BusinessShortCode": "174379",
+                "Password": password,
+                "Timestamp": timestamp,
+                "TransactionType": "CustomerPayBillOnline",
+                "Amount": amount,
+                "PartyA": phone,
+                "PartyB": "174379",
+                "PhoneNumber": phone,
+                "CallBackURL": "http://server-env.eba-8hpawwgj.eu-north-1.elasticbeanstalk.com/api/vitapharm/callback",
+                "AccountReference": "VitapharmPayment",
+                "TransactionDesc": "Test"
+            }
+            response = requests.post(endpoint, json=data, headers=headers)
+
+            if response.status_code == 200:
+                response_data = response.json()
+                if response_data.get("ResponseCode") == "0":
+                    # Save CheckoutRequestID to the corresponding Order
+                    order = Order.query.get(order_id)
+                    order.checkout_request_id = response_data.get("CheckoutRequestID")
+                    db.session.commit()
+            return response.json()
+        
+        except Exception as e:
+            db.session.rollback()
+            return {"error": str(e)}
+
+@ns.route("/callback", methods=["POST"])
+def callback_url():
+    try:
+        data = request.get_json()
+        print("CallbackData:", data)
+
+        # Extract relevant information from the callback
+        result_code = data["Body"]["stkCallback"]["ResultCode"]
+        checkout_request_id = data["Body"]["stkCallback"]["CheckoutRequestID"]
+
+        if result_code == 0:
+            # Payment successful
+            # Use CheckoutRequestID to find the corresponding order
+            order = Order.query.filter_by(checkout_request_id=checkout_request_id).first()
+
+            if not order:
+                return make_response(jsonify({"error": "Order not found"}), 404)
+
+            # Update order status and save transaction details
+            order.mpesa_receipt_number = data["Body"]["stkCallback"]["CallbackMetadata"]["Item"][1]["Value"]
+            order.transaction_date = data["Body"]["stkCallback"]["CallbackMetadata"]["Item"][2]["Value"]
+            order.status = "Paid"  # Update with your own order status logic
+
+            db.session.commit()
+
+            # Send order confirmation email
+            send_order_confirmation_email(order)
+
+            # Return success response to Safaricom
+            return make_response(jsonify({"ResultCode": 0, "ResultDesc": "Accepted"}), 200)
+        else:
+            # Payment failed
+            return make_response(jsonify({"ResultCode": result_code, "ResultDesc": data["Body"]["stkCallback"]["ResultDesc"]}), 200)
+        
+    except Exception as e:
+        return make_response(jsonify({"error": str(e)}), 500)
+
+def send_order_confirmation_email(order):
+    from app import mail
+
+    # Prepare order details for email
+    order_details = f"""
+    Payment by MPESA
+
+    Customer Name: {order.customerFirstName} {order.customerLastName}
+    Customer Email: {order.customerEmail}
+    Customer Phone: {order.phone}
+    Customer Address: {order.address}
+    Town: {order.town}
+
+    Order Items:
+    """
+    for order_item in order.orderitems:
+        product = order_item.product
+        variation = order_item.variation
+        order_details += f"\t- {product.name} ({variation.size}) (x{order_item.quantity}) - Ksh{variation.price:.2f}\n"
+
+    order_details += f"\nDelivery Cost: Ksh {order.deliverycost:.2f}"
+    order_details += f"\nTotal Price: Ksh {order.total_price:.2f}"
+
+    # Send email notification
+    msg = Message('New Order Placed!', sender='Vitapharm <princewalter422@gmail.com>', recipients=[order.customerEmail])
+    msg.body = order_details
+    mail.send(msg)
