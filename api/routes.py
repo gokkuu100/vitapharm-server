@@ -5,7 +5,7 @@ from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_requir
 from jwt.exceptions import DecodeError
 from datetime import datetime, timedelta
 from flask_bcrypt import Bcrypt
-from models import Admin, db, Product, Image, CartItem, Appointment, Order, OrderItem, ProductVariation
+from models import Admin, db, Product, Image, CartItem, Appointment, Order, OrderItem, ProductVariation, CustomerEmails
 import datetime
 import json
 import secrets
@@ -16,6 +16,7 @@ import time
 import requests
 from requests.auth import HTTPBasicAuth
 import base64
+import re
 
 ns = Namespace("vitapharm", description="CRUD endpoints")
 bcrypt = Bcrypt()
@@ -93,6 +94,45 @@ class AdminSignup(Resource):
             db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
         
+@ns.route("/login")
+class AdminLogin(Resource):
+    def post(self):
+        try:
+            data = request.get_json()
+            email = data.get('email')
+            password = data.get('password')
+
+            if not email or not password:
+                return make_response(jsonify("Invalid email or password"), 400)
+            
+            user = Admin.query.filter_by(email=email).first()
+            if not user or not bcrypt.check_password_hash(user.password, password):
+                return make_response(jsonify({"error": "Invalid email or password"}), 401)
+
+            access_token = create_access_token(identity={'email': user.email})
+            return make_response(jsonify(access_token=access_token), 200)
+        except Exception as e:
+            return make_response(jsonify({"error": str(e)}), 500)
+        
+
+@ns.route("/customeremails")
+class CaptureEmail(Resource):
+    def post(self):
+        try:
+            data = request.get_json()
+            email = data.get('email')
+
+            if not email:
+                return make_response(jsonify("Error"), 400)
+
+            new_email = CustomerEmails(email=email)
+            db.session.add(new_email)
+            db.session.commit()
+
+            return make_response(jsonify({"message": "Email captured"}), 201)
+        except Exception as e:
+            db.session.rollback()
+            return make_response(jsonify({"error": str(e)}), 500)
 
 @ns.route("/products")
 class NewProduct(Resource):
@@ -792,8 +832,6 @@ class LipaNaMpesa(Resource):
             db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
         
-    @classmethod
-    @ns.route("/send_stk_push", methods=['POST']) 
     def send_stk_push(self, phone, amount, order_id):
         try:
             endpoint = "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
@@ -833,41 +871,42 @@ class LipaNaMpesa(Resource):
             return {"error": str(e)}
 
 @ns.route("/callback", methods=["POST"])
-def callback_url():
-    try:
-        data = request.get_json()
-        print("CallbackData:", data)
+class CallBackURL(Resource):
+    def callback_url():
+        try:
+            data = request.get_json()
+            print("CallbackData:", data)
 
-        # Extract relevant information from the callback
-        result_code = data["Body"]["stkCallback"]["ResultCode"]
-        checkout_request_id = data["Body"]["stkCallback"]["CheckoutRequestID"]
+            # Extract relevant information from the callback
+            result_code = data["Body"]["stkCallback"]["ResultCode"]
+            checkout_request_id = data["Body"]["stkCallback"]["CheckoutRequestID"]
 
-        if result_code == 0:
-            # Payment successful
-            # Use CheckoutRequestID to find the corresponding order
-            order = Order.query.filter_by(checkout_request_id=checkout_request_id).first()
+            if result_code == 0:
+                # Payment successful
+                # Use CheckoutRequestID to find the corresponding order
+                order = Order.query.filter_by(checkout_request_id=checkout_request_id).first()
 
-            if not order:
-                return make_response(jsonify({"error": "Order not found"}), 404)
+                if not order:
+                    return make_response(jsonify({"error": "Order not found"}), 404)
 
-            # Update order status and save transaction details
-            order.mpesa_receipt_number = data["Body"]["stkCallback"]["CallbackMetadata"]["Item"][1]["Value"]
-            order.transaction_date = data["Body"]["stkCallback"]["CallbackMetadata"]["Item"][2]["Value"]
-            order.status = "Paid"  # Update with your own order status logic
+                # Update order status and save transaction details
+                order.mpesa_receipt_number = data["Body"]["stkCallback"]["CallbackMetadata"]["Item"][1]["Value"]
+                order.transaction_date = data["Body"]["stkCallback"]["CallbackMetadata"]["Item"][2]["Value"]
+                order.status = "Paid"  # Update with your own order status logic
 
-            db.session.commit()
+                db.session.commit()
 
-            # Send order confirmation email
-            send_order_confirmation_email(order)
+                # Send order confirmation email
+                send_order_confirmation_email(order)
 
-            # Return success response to Safaricom
-            return make_response(jsonify({"ResultCode": 0, "ResultDesc": "Accepted"}), 200)
-        else:
-            # Payment failed
-            return make_response(jsonify({"ResultCode": result_code, "ResultDesc": data["Body"]["stkCallback"]["ResultDesc"]}), 200)
-        
-    except Exception as e:
-        return make_response(jsonify({"error": str(e)}), 500)
+                # Return success response to Safaricom
+                return make_response(jsonify({"ResultCode": 0, "ResultDesc": "Accepted"}), 200)
+            else:
+                # Payment failed
+                return make_response(jsonify({"ResultCode": result_code, "ResultDesc": data["Body"]["stkCallback"]["ResultDesc"]}), 200)
+            
+        except Exception as e:
+            return make_response(jsonify({"error": str(e)}), 500)
 
 def send_order_confirmation_email(order):
     from app import mail

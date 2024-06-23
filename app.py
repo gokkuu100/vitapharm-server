@@ -8,14 +8,9 @@ from flask_jwt_extended import JWTManager
 from flask_migrate import Migrate
 from models import db
 from dotenv import load_dotenv
-from datetime import timedelta, datetime
+from datetime import timedelta
 import os
 import secrets
-
-import requests
-from requests.auth import HTTPBasicAuth
-import base64
-
 import boto3
 
 # Loads dotenv file
