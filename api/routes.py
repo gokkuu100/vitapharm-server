@@ -20,6 +20,13 @@ import base64
 ns = Namespace("vitapharm", description="CRUD endpoints")
 bcrypt = Bcrypt()
 
+def getAccessToken():
+    consumer_key = "xyyfojxRcUqE57AMT1qAlc6WLKSXZGGzwUReLA2uCQAbmqaN"
+    consumer_secret = "cl8uGswLYcvNAEQZDQxLBfadKxJXp8oMANWy4P8OTqdcT7V8vpDjckWyDxzAYwgZ"
+    api_URL = "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
+    r = requests.get(api_URL, auth=HTTPBasicAuth(consumer_key, consumer_secret))
+    my_access_token = r.json()['access_token']
+    return my_access_token
 
 # Generates JWT token for session
 def generate_session_token():
