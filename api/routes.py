@@ -315,9 +315,17 @@ class AddToCart(Resource):
             quantity = data.get('quantity', 1)
             session_id = get_jwt_identity()
 
+            # Retrieve variation_id for the product
+            product = Product.query.get(product_id)
+            if not product or not product.variations:
+                return make_response(jsonify({"error": "Product or variation not found"}), 404)
+            
+            # Assuming the first variation for simplicity; adjust logic as needed
+            variation_id = product.variations[0].id
+
         
             # Create a new cart item and associate it with the session ID
-            cart_item = CartItem(product_id=product_id, quantity=quantity, session_id=session_id)
+            cart_item = CartItem(product_id=product_id, quantity=quantity, session_id=session_id, variation_id=variation_id)
             db.session.add(cart_item)
             db.session.commit()
 
@@ -644,8 +652,8 @@ class PlaceOrder(Resource):
             # calculates total order value
             total_price = 0
             for cart_item in cart_items:
-                product_variation = cart_item.product_variation
-                item_price = product_variation.price * cart_item.quantity
+                variation = cart_item.variation
+                item_price = variation.price * cart_item.quantity
                 total_price += item_price
 
             # creates order items for each item
@@ -669,12 +677,13 @@ class PlaceOrder(Resource):
             """
             for cart_item in cart_items:
                 product = cart_item.products
-                order_details += f"\t- {product.name} (x{cart_item.quantity}) - Ksh{product.price:.2f}\n"
+                variation = cart_item.variation
+                order_details += f"\t- {product.name} ({variation.size}) (x{cart_item.quantity}) - Ksh{variation.price:.2f}\n"
 
             order_details += f"\nTotal Price: Ksh {total_price:.2f}"
 
             # send email notification
-            msg = Message('New Order Placed!', sender='Vitapharm <princewalter422@gmail.com>', recipients=['wkurts247@gmail.com'])
+            msg = Message('New Order Placed!', sender='Vitapharm <princewalter422@gmail.com>', recipients=[customerEmail])
             msg.body = order_details
             mail.send(msg)
 
