@@ -41,8 +41,6 @@ class Admin(db.Model, SerializerMixin):
             raise ValueError("Invalid email format")
         return email
 
-
-
 class Product(db.Model, SerializerMixin):
     __tablename__ = "products"
     id = db.Column(db.Integer, primary_key=True)
