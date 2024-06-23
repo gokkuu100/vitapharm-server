@@ -82,6 +82,10 @@ class CartItem(db.Model, SerializerMixin):
     session_id = db.Column(db.String(128))
 
     product_id = db.Column(db.ForeignKey('products.id'), nullable=False)
+    variation_id = db.Column(db.ForeignKey('product_variations.id'), nullable=False)
+
+    product = db.relationship('Product', backref='cart_items', lazy=True)
+    variation = db.relationship('ProductVariation', backref='cart_items', lazy=True)
 
 class Order(db.Model, SerializerMixin):
     __tablename__ = "orders"
