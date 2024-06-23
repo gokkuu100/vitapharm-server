@@ -6,17 +6,19 @@ from jwt.exceptions import DecodeError
 from datetime import datetime, timedelta
 from flask_bcrypt import Bcrypt
 from models import Admin, db, Product, Image, CartItem, Appointment, Order, OrderItem, ProductVariation
-from caching import cache
-import base64
 import datetime
 import json
-import jwt
 import secrets
 from sqlalchemy import or_
+from sqlalchemy.orm import joinedload
+import logging
+import time
+import requests
+from requests.auth import HTTPBasicAuth
+import base64
 
 ns = Namespace("vitapharm", description="CRUD endpoints")
 bcrypt = Bcrypt()
-
 
 
 # Generates JWT token for session
@@ -120,11 +122,7 @@ class NewProduct(Resource):
 
             # save images
             images = request.files.getlist("images")
-            for image in images:
-                if image.filename != '':
-                    image_data = image.read()
-                    new_image = Image(data=image_data, product_id=new_product.id)
-                    db.session.add(new_image)
+            new_product.save_images(images, 'vitapharms3')
 
             db.session.commit()
 
@@ -133,15 +131,22 @@ class NewProduct(Resource):
             db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
     
-    @cache.cached(timeout=60*30, query_string=True)
     def get(self):
         try:
-            # retrieves all the products
-            products = Product.query.all()
+            start_time = time.time()
+            logging.info('Fetching products')
+
+            # Retrieves all the products
+            products = Product.query.options(
+            joinedload(Product.variations),
+            joinedload(Product.images)
+            ).all()
+
             if not products:
                 return make_response(jsonify({"message": "No products found"}), 404)
-            
-            # products list
+
+            logging.info(f"Products fetched in {time.time() - start_time} seconds")
+            # Products list
             products_list = []
             for product in products:
                 product_data = {
@@ -155,7 +160,10 @@ class NewProduct(Resource):
                     "variations": [],
                     "images": []
                 }
+                var_start_time = time.time()
                 variations = ProductVariation.query.filter_by(product_id=product.id).all()
+                logging.info(f"Variations fetched for product {product.id} in {time.time() - var_start_time} seconds")
+
                 for item in variations:
                     data = {
                         "id": item.id,
@@ -163,17 +171,21 @@ class NewProduct(Resource):
                         "price": item.price
                     }
                     product_data["variations"].append(data)
-                products_list.append(product_data)
 
+                img_start_time = time.time()
                 images = Image.query.filter_by(product_id=product.id).all()
+                logging.info(f"Images fetched for product {product.id} in {time.time() - img_start_time} seconds")
+
                 for image in images:
                     image_data = {
                         "id": image.id,
-                        "data": base64.b64encode(image.data).decode('utf-8')
+                        "url": image.url
                     }
                     product_data["images"].append(image_data)
+
                 products_list.append(product_data)
 
+            logging.info(f"Total request time: {time.time() - start_time} seconds")
             return make_response(jsonify(products_list), 200)
         except Exception as e:
             print("Error fetching products")
@@ -182,28 +194,29 @@ class NewProduct(Resource):
 
 @ns.route( "/products/<int:productId>")
 class SingleProduct(Resource):
-    @cache.cached(timeout=3600, key_prefix='single_product:%s')
-    def get(self, productId):
+    # @cache.cached(timeout=3600, key_prefix='single_product:%s')
+    def get(self, productId):  # <-- Add productId argument here
         try:
-            # checks for specific product
-            singleProduct = Product.query.get(productId)
-            if not singleProduct:
-                return make_response(jsonify({"error": "Product not found"}), 404)
-            
-            # product data
+            # Retrieve the product based on productId
+            product = Product.query.get(productId)
+            if not product:
+                return make_response(jsonify({"message": "Product not found"}), 404)
+
+            # Product data
             product_data = {
-                "id": singleProduct.id,
-                "name": singleProduct.name,
-                "description": singleProduct.description,
-                "brand": singleProduct.brand,
-                "category": singleProduct.category,
-                "sub-category": singleProduct.sub_category,
-                "admin_id": singleProduct.admin_id,
+                "id": product.id,
+                "name": product.name,
+                "description": product.description,
+                "brand": product.brand,
+                "category": product.category,
+                "sub_category": product.sub_category,
+                "admin_id": product.admin_id,
                 "variations": [],
                 "images": []
             }
-            # retrieves price variations
-            variations = ProductVariation.query.filter_by(product_id=singleProduct.id).all()
+
+            # Variations
+            variations = ProductVariation.query.filter_by(product_id=product.id).all()
             for item in variations:
                 data = {
                     "id": item.id,
@@ -211,13 +224,13 @@ class SingleProduct(Resource):
                     "price": item.price
                 }
                 product_data["variations"].append(data)
-    
-            # retrieves images
-            images = Image.query.filter_by(product_id=singleProduct.id).all()
+
+            # Images
+            images = Image.query.filter_by(product_id=product.id).all()
             for image in images:
                 image_data = {
                     "id": image.id,
-                    "data": base64.b64encode(image.data).decode('utf-8')
+                    "url": image.url
                 }
                 product_data["images"].append(image_data)
 
@@ -305,9 +318,17 @@ class AddToCart(Resource):
             quantity = data.get('quantity', 1)
             session_id = get_jwt_identity()
 
+            # Retrieve variation_id for the product
+            product = Product.query.get(product_id)
+            if not product or not product.variations:
+                return make_response(jsonify({"error": "Product or variation not found"}), 404)
+            
+            # Assuming the first variation for simplicity; adjust logic as needed
+            variation_id = product.variations[0].id
+
         
             # Create a new cart item and associate it with the session ID
-            cart_item = CartItem(product_id=product_id, quantity=quantity, session_id=session_id)
+            cart_item = CartItem(product_id=product_id, quantity=quantity, session_id=session_id, variation_id=variation_id)
             db.session.add(cart_item)
             db.session.commit()
 
@@ -342,7 +363,7 @@ class Cart(Resource):
                 for image in images:
                     image_data.append({
                         "id": image.id,
-                        "data": base64.b64encode(image.data).decode('utf-8')
+                        "url": image.url
                     })
 
                 cart_contents.append({
@@ -473,7 +494,7 @@ class ProductSearch(Resource):
                 for image in images:
                     image_data = {
                         "id": image.id,
-                        "data": base64.b64encode(image.data).decode('utf-8')
+                        "url": image.url
                     }
                     product_data["images"].append(image_data)
                 products_list.append(product_data)
@@ -518,7 +539,7 @@ class ProductsOnOffer(Resource):
                 for image in images:
                     image_data = {
                         "id": image.id,
-                        "data": base64.b64encode(image.data).decode('utf-8')
+                        "url": image.url
                     }
                     product_data["images"].append(image_data)
                 products_list.append(product_data)
@@ -763,8 +784,6 @@ class LipaNaMpesa(Resource):
             db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
         
-    @classmethod
-    @ns.route("/send_stk_push", methods=['POST']) 
     def send_stk_push(self, phone, amount, order_id):
         try:
             endpoint = "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
@@ -804,41 +823,42 @@ class LipaNaMpesa(Resource):
             return {"error": str(e)}
 
 @ns.route("/callback", methods=["POST"])
-def callback_url():
-    try:
-        data = request.get_json()
-        print("CallbackData:", data)
+class CallBackURL(Resource):
+    def callback_url():
+        try:
+            data = request.get_json()
+            print("CallbackData:", data)
 
-        # Extract relevant information from the callback
-        result_code = data["Body"]["stkCallback"]["ResultCode"]
-        checkout_request_id = data["Body"]["stkCallback"]["CheckoutRequestID"]
+            # Extract relevant information from the callback
+            result_code = data["Body"]["stkCallback"]["ResultCode"]
+            checkout_request_id = data["Body"]["stkCallback"]["CheckoutRequestID"]
 
-        if result_code == 0:
-            # Payment successful
-            # Use CheckoutRequestID to find the corresponding order
-            order = Order.query.filter_by(checkout_request_id=checkout_request_id).first()
+            if result_code == 0:
+                # Payment successful
+                # Use CheckoutRequestID to find the corresponding order
+                order = Order.query.filter_by(checkout_request_id=checkout_request_id).first()
 
-            if not order:
-                return make_response(jsonify({"error": "Order not found"}), 404)
+                if not order:
+                    return make_response(jsonify({"error": "Order not found"}), 404)
 
-            # Update order status and save transaction details
-            order.mpesa_receipt_number = data["Body"]["stkCallback"]["CallbackMetadata"]["Item"][1]["Value"]
-            order.transaction_date = data["Body"]["stkCallback"]["CallbackMetadata"]["Item"][2]["Value"]
-            order.status = "Paid"  # Update with your own order status logic
+                # Update order status and save transaction details
+                order.mpesa_receipt_number = data["Body"]["stkCallback"]["CallbackMetadata"]["Item"][1]["Value"]
+                order.transaction_date = data["Body"]["stkCallback"]["CallbackMetadata"]["Item"][2]["Value"]
+                order.status = "Paid"  # Update with your own order status logic
 
-            db.session.commit()
+                db.session.commit()
 
-            # Send order confirmation email
-            send_order_confirmation_email(order)
+                # Send order confirmation email
+                send_order_confirmation_email(order)
 
-            # Return success response to Safaricom
-            return make_response(jsonify({"ResultCode": 0, "ResultDesc": "Accepted"}), 200)
-        else:
-            # Payment failed
-            return make_response(jsonify({"ResultCode": result_code, "ResultDesc": data["Body"]["stkCallback"]["ResultDesc"]}), 200)
-        
-    except Exception as e:
-        return make_response(jsonify({"error": str(e)}), 500)
+                # Return success response to Safaricom
+                return make_response(jsonify({"ResultCode": 0, "ResultDesc": "Accepted"}), 200)
+            else:
+                # Payment failed
+                return make_response(jsonify({"ResultCode": result_code, "ResultDesc": data["Body"]["stkCallback"]["ResultDesc"]}), 200)
+            
+        except Exception as e:
+            return make_response(jsonify({"error": str(e)}), 500)
 
 def send_order_confirmation_email(order):
     from app import mail
@@ -867,4 +887,6 @@ def send_order_confirmation_email(order):
     msg = Message('New Order Placed!', sender='Vitapharm <princewalter422@gmail.com>', recipients=[order.customerEmail])
     msg.body = order_details
     mail.send(msg)
+    
+    
         
