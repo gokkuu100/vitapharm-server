@@ -96,6 +96,12 @@ class Order(db.Model, SerializerMixin):
     address = db.Column(db.String(96), nullable=False)
     town = db.Column(db.String(24), nullable=False)
     phone = db.Column(db.String(30), nullable=False)
+    deliverycost = db.Column(db.Integer(), nullable=True)
+    checkout_request_id = db.Column(db.String(100), nullable=True)
+    total_price = db.Column(db.Float, nullable=True, default=0.0)  # Total price of the order
+    status = db.Column(db.String(20), nullable=True, default='On Delivery')  # Status of the order: Pending, Paid, Shipped, etc.
+    mpesa_receipt_number = db.Column(db.String(50), nullable=True)  # Mpesa receipt number
+    transaction_date = db.Column(db.DateTime, nullable=True)
 
     orderitems = db.relationship('OrderItem', back_populates='orders', lazy=True)
 
