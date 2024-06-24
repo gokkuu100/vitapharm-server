@@ -473,6 +473,7 @@ class Cart(Resource):
 
             # filters cartitems with the session token
             cart_items = CartItem.query.filter_by(session_id=session_identity).all()
+            print(cart_items)
 
             cart_contents = []
             for item in cart_items:
@@ -494,7 +495,6 @@ class Cart(Resource):
                     "product_name": product.name,
                     "quantity": item.quantity,
                     "variation_size": variation.size,
-                    "price_set": item.price,
                     "total_price": item_price,
                     "image_data": image_data
                 })
