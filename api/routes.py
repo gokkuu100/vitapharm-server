@@ -837,22 +837,25 @@ class LipaNaMpesa(Resource):
     @jwt_required(optional=True)
     def post(self):
         try:
+            if request.is_json:
+                data = request.get_json()
+            else:
+                data = {key: request.form[key] for key in request.form}
             # retrieves session ID from cookies
-            session_id = get_jwt_identity()
+            # session_id = get_jwt_identity()
 
-            # checks if session ID exists
-            if not session_id:
-                return make_response(jsonify({"error": "Session token not found"}), 400)
+            # # checks if session ID exists
+            # if not session_id:
+            #     return make_response(jsonify({"error": "Session token not found"}), 400)
 
-            # queries cart items associated with the session ID
-            cart_items = CartItem.query.filter_by(session_id=session_id).all()
+            # # queries cart items associated with the session ID
+            # cart_items = CartItem.query.filter_by(session_id=session_id).all()
 
-            # checks if there are any items in the cart
-            if not cart_items:
-                return make_response(jsonify({"error": "Cart is empty"}), 400)
+            # # checks if there are any items in the cart
+            # if not cart_items:
+            #     return make_response(jsonify({"error": "Cart is empty"}), 400)
 
             # gets user data from request body
-            data = request.get_json()
             customerFirstName = data.get('customerFirstName')
             customerLastName = data.get('customerLastName')
             customerEmail = data.get('customerEmail')
@@ -867,9 +870,9 @@ class LipaNaMpesa(Resource):
 
             # calculates total order value
             total_price = deliverycost
-            for cart_item in cart_items:
-                item_price = cart_item.price * cart_item.quantity
-                total_price += item_price
+            # for cart_item in cart_items:
+            #     item_price = cart_item.price * cart_item.quantity
+            #     total_price += item_price
 
             # creates new order (not yet saved to DB)
             new_order = Order(
