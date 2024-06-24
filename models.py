@@ -107,7 +107,7 @@ class CartItem(db.Model, SerializerMixin):
     price = db.Column(db.Integer())
 
     product_id = db.Column(db.ForeignKey('products.id'), nullable=False)
-    variation_id = db.Column(db.ForeignKey('product_variations.id'), nullable=False)
+    variation_id = db.Column(db.ForeignKey('product_variations.id'), nullable=True)
 
     product = db.relationship('Product', backref='cart_items')
     variation = db.relationship('ProductVariation', backref='cart_items')
