@@ -5,8 +5,8 @@ from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_requir
 from jwt.exceptions import DecodeError
 from datetime import datetime, timedelta
 from flask_bcrypt import Bcrypt
-from models import Admin, db, Product, Image, CartItem, Appointment, Order, OrderItem, ProductVariation, CustomerEmails
-import datetime
+from models import Admin, db, Product, Image, CartItem, Appointment, Order, OrderItem, ProductVariation
+from datetime import datetime
 import json
 import secrets
 from sqlalchemy import or_
@@ -16,7 +16,6 @@ import time
 import requests
 from requests.auth import HTTPBasicAuth
 import base64
-import re
 
 ns = Namespace("vitapharm", description="CRUD endpoints")
 bcrypt = Bcrypt()
@@ -94,45 +93,8 @@ class AdminSignup(Resource):
             db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
         
-@ns.route("/login")
-class AdminLogin(Resource):
-    def post(self):
-        try:
-            data = request.get_json()
-            email = data.get('email')
-            password = data.get('password')
-
-            if not email or not password:
-                return make_response(jsonify("Invalid email or password"), 400)
-            
-            user = Admin.query.filter_by(email=email).first()
-            if not user or not bcrypt.check_password_hash(user.password, password):
-                return make_response(jsonify({"error": "Invalid email or password"}), 401)
-
-            access_token = create_access_token(identity={'email': user.email})
-            return make_response(jsonify(access_token=access_token), 200)
-        except Exception as e:
-            return make_response(jsonify({"error": str(e)}), 500)
         
-
-@ns.route("/customeremails")
-class CaptureEmail(Resource):
-    def post(self):
-        try:
-            data = request.get_json()
-            email = data.get('email')
-
-            if not email:
-                return make_response(jsonify("Error"), 400)
-
-            new_email = CustomerEmails(email=email)
-            db.session.add(new_email)
-            db.session.commit()
-
-            return make_response(jsonify({"message": "Email captured"}), 201)
-        except Exception as e:
-            db.session.rollback()
-            return make_response(jsonify({"error": str(e)}), 500)
+        
 
 @ns.route("/products")
 class NewProduct(Resource):
@@ -259,6 +221,9 @@ class SingleProduct(Resource):
                 "category": product.category,
                 "sub_category": product.sub_category,
                 "admin_id": product.admin_id,
+                "deal_price": product.deal_price,
+                "deal_start_time": product.deal_start_time,
+                "deal_end_time": product.deal_end_time,
                 "variations": [],
                 "images": []
             }
@@ -355,6 +320,72 @@ class SingleProduct(Resource):
             db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
         
+
+@ns.route("/products/deals")
+class QueryDate(Resource):
+    def get(self):
+        try:
+            # Get the date from query parameters
+            date_str = request.args.get('date')
+            if not date_str:
+                return make_response(jsonify({"error": "Date parameter is required"}), 400)
+            
+            # Convert the date from string to datetime object
+            try:
+                query_date = datetime.strptime(date_str, "%Y-%m-%d")
+            except ValueError:
+                return make_response(jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400)
+
+            # Query the products with active deals on the given date
+            products = Product.query.filter(
+                Product.deal_price.isnot(None),
+                Product.deal_start_time <= query_date,
+                Product.deal_end_time >= query_date
+            ).all()
+
+            # Format the response
+            products_data = []
+            for product in products:
+                product_data = {
+                    "id": product.id,
+                    "name": product.name,
+                    "description": product.description,
+                    "brand": product.brand,
+                    "category": product.category,
+                    "sub_category": product.sub_category,
+                    "admin_id": product.admin_id,
+                    "deal_price": product.deal_price,
+                    "deal_start_time": product.deal_start_time,
+                    "deal_end_time": product.deal_end_time,
+                    "variations": [],
+                    "images": []
+                }
+
+                # Add variations
+                variations = ProductVariation.query.filter_by(product_id=product.id).all()
+                for item in variations:
+                    data = {
+                        "id": item.id,
+                        "size": item.size,
+                        "price": item.price
+                    }
+                    product_data["variations"].append(data)
+
+                # Add images
+                images = Image.query.filter_by(product_id=product.id).all()
+                for image in images:
+                    image_data = {
+                        "id": image.id,
+                        "url": image.url
+                    }
+                    product_data["images"].append(image_data)
+
+                products_data.append(product_data)
+
+            return make_response(jsonify(products_data), 200)
+        except Exception as e:
+            return make_response(jsonify({"error": str(e)}), 500)
+        
 # adds items to cart
 @ns.route("/cart/add")
 class AddToCart(Resource):
@@ -374,9 +405,15 @@ class AddToCart(Resource):
             # Assuming the first variation for simplicity; adjust logic as needed
             variation_id = product.variations[0].id
 
-        
+            # Determine if the product is on a deal
+            now = datetime.now()
+            if product.deal_start_time and product.deal_end_time and product.deal_start_time <= now <= product.deal_end_time:
+                price = product.deal_price
+            else:
+                price = product.variations[0].price
+
             # Create a new cart item and associate it with the session ID
-            cart_item = CartItem(product_id=product_id, quantity=quantity, session_id=session_id, variation_id=variation_id)
+            cart_item = CartItem(product_id=product_id, quantity=quantity, session_id=session_id, variation_id=variation_id, price=price)
             db.session.add(cart_item)
             db.session.commit()
 
@@ -394,7 +431,6 @@ class Cart(Resource):
 
             # retrieve session token from frontend
             session_identity=get_jwt_identity()
-            print(session_identity)
 
             # filters cartitems with the session token
             cart_items = CartItem.query.filter_by(session_id=session_identity).all()
@@ -403,7 +439,7 @@ class Cart(Resource):
             for item in cart_items:
                 product = item.products
                 variation = product.variations[0]  
-                item_price = variation.price * item.quantity
+                item_price = item.price * item.quantity
                 
                 # Fetch image data for the product
                 images = Image.query.filter_by(product_id=product.id).all()
@@ -419,7 +455,7 @@ class Cart(Resource):
                     "product_name": product.name,
                     "quantity": item.quantity,
                     "variation_size": variation.size,
-                    "variation_price": variation.price,
+                    "price_set": item.price,
                     "total_price": item_price,
                     "image_data": image_data
                 })
@@ -705,8 +741,7 @@ class PlaceOrder(Resource):
             # calculates total order value
             total_price = deliverycost
             for cart_item in cart_items:
-                variation = cart_item.variation
-                item_price = variation.price * cart_item.quantity
+                item_price = cart_item.price * cart_item.quantity
                 total_price += item_price
 
             # creates order items for each item
@@ -731,7 +766,7 @@ class PlaceOrder(Resource):
             for cart_item in cart_items:
                 product = cart_item.products
                 variation = cart_item.variation
-                order_details += f"\t- {product.name} ({variation.size}) (x{cart_item.quantity}) - Ksh{variation.price:.2f}\n"
+                order_details += f"\t- {product.name} ({variation.size}) (x{cart_item.quantity}) - Ksh{cart_item.price:.2f}\n"
 
             order_details += f"\nDelivery Cost: Ksh {deliverycost:.2f}"
             order_details += f"\nTotal Price: Ksh {total_price:.2f}"
@@ -794,8 +829,7 @@ class LipaNaMpesa(Resource):
             # calculates total order value
             total_price = deliverycost
             for cart_item in cart_items:
-                variation = cart_item.variation
-                item_price = variation.price * cart_item.quantity
+                item_price = cart_item.price * cart_item.quantity
                 total_price += item_price
 
             # creates new order (not yet saved to DB)
@@ -924,9 +958,10 @@ def send_order_confirmation_email(order):
     Order Items:
     """
     for order_item in order.orderitems:
+        cart_item = order_item.cart_item
         product = order_item.product
         variation = order_item.variation
-        order_details += f"\t- {product.name} ({variation.size}) (x{order_item.quantity}) - Ksh{variation.price:.2f}\n"
+        order_details += f"\t- {product.name} ({variation.size}) (x{order_item.quantity}) - Ksh{cart_item.price:.2f}\n"
 
     order_details += f"\nDelivery Cost: Ksh {order.deliverycost:.2f}"
     order_details += f"\nTotal Price: Ksh {order.total_price:.2f}"

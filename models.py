@@ -104,9 +104,9 @@ class CartItem(db.Model, SerializerMixin):
     id = db.Column(db.Integer, primary_key=True)
     quantity = db.Column(db.Integer())
     session_id = db.Column(db.String(128))
+    price = db.Column(db.Integer())
 
     product_id = db.Column(db.ForeignKey('products.id'), nullable=False)
-    variation_id = db.Column(db.Integer, db.ForeignKey('product_variations.id'), nullable=True)
 
     product = db.relationship('Product', backref='cart_items', lazy=True)
     variation = db.relationship('ProductVariation', backref='cart_items', lazy=True)
@@ -140,6 +140,9 @@ class OrderItem(db.Model, SerializerMixin):
 
     order = db.relationship('Order', back_populates='orderitems')
     product = db.relationship('Product', back_populates='orderitems')
+    cart_item_id = db.Column(db.Integer, db.ForeignKey('cartitems.id'))
+    cart_item = db.relationship('CartItem', backref='orderitems')
+
 
 class Appointment(db.Model, SerializerMixin):
     __tablename__ = "appointments"
