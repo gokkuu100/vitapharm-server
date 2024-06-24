@@ -3,8 +3,6 @@ from sqlalchemy_serializer import SerializerMixin
 from sqlalchemy import CheckConstraint
 import re
 from sqlalchemy.orm import validates
-import datetime
-
 import boto3
 from botocore.exceptions import NoCredentialsError
 import uuid
@@ -80,6 +78,8 @@ class ProductVariation(db.Model, SerializerMixin):
     price = db.Column(db.Integer())
     product_id = db.Column(db.ForeignKey("products.id"), nullable=False)
 
+    cartitems = db.relationship('CartItem', backref='product_variations', lazy=True)
+
     @validates('size')
     def validate_size(self, key, size):
         if not size:
@@ -107,9 +107,12 @@ class CartItem(db.Model, SerializerMixin):
     price = db.Column(db.Integer())
 
     product_id = db.Column(db.ForeignKey('products.id'), nullable=False)
+    variation_id = db.Column(db.ForeignKey('product_variations.id'), nullable=False)
 
-    product = db.relationship('Product', backref='cart_items', lazy=True)
-    variation = db.relationship('ProductVariation', backref='cart_items', lazy=True)
+    product = db.relationship('Product', backref='cart_items')
+    variation = db.relationship('ProductVariation', backref='cart_items')
+
+    orderitems = db.relationship('OrderItem', backref='cartitems', lazy=True)
 
 
 class Order(db.Model, SerializerMixin):
@@ -128,7 +131,7 @@ class Order(db.Model, SerializerMixin):
     mpesa_receipt_number = db.Column(db.String(50), nullable=True)  # Mpesa receipt number
     transaction_date = db.Column(db.DateTime, nullable=True)
 
-    orderitems = db.relationship('OrderItem', back_populates='order', lazy=True)
+    orderitems = db.relationship('OrderItem', backref='orders', lazy=True)
 
 class OrderItem(db.Model, SerializerMixin):
     __tablename__ = "orderitems"
@@ -137,11 +140,7 @@ class OrderItem(db.Model, SerializerMixin):
 
     order_id = db.Column(db.ForeignKey('orders.id'))
     product_id = db.Column(db.ForeignKey('products.id'))
-
-    order = db.relationship('Order', back_populates='orderitems')
-    product = db.relationship('Product', back_populates='orderitems')
     cart_item_id = db.Column(db.Integer, db.ForeignKey('cartitems.id'))
-    cart_item = db.relationship('CartItem', backref='orderitems')
 
 
 class Appointment(db.Model, SerializerMixin):
