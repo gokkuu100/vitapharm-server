@@ -5,7 +5,7 @@ from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_requir
 from jwt.exceptions import DecodeError
 from datetime import datetime, timedelta
 from flask_bcrypt import Bcrypt
-from models import Admin, db, Product, Image, CartItem, Appointment, Order, OrderItem, ProductVariation
+from models import Admin, db, Product, Image, CartItem, Appointment, Order, OrderItem, ProductVariation, CustomerEmails
 from datetime import datetime
 import json
 import secrets
@@ -16,6 +16,7 @@ import time
 import requests
 from requests.auth import HTTPBasicAuth
 import base64
+import re
 
 ns = Namespace("vitapharm", description="CRUD endpoints")
 bcrypt = Bcrypt()
@@ -93,7 +94,45 @@ class AdminSignup(Resource):
             db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
         
-        
+@ns.route("/customeremails")
+class CustomerEmailsResource(Resource):
+    def get(self):
+        try:
+            # Query all customer emails from the database
+            customer_emails = CustomerEmails.query.all()
+
+            # Serialize customer emails using SerializerMixin
+            serialized_emails = [email.to_dict() for email in customer_emails]
+
+            # Return JSON response
+            return jsonify(serialized_emails), 200
+
+        except Exception as e:
+            return make_response(jsonify({"error": str(e)}), 500)
+    def post(self):
+        try:
+            data = request.get_json()
+            email = data.get('email')
+
+            # Validate email format
+            if not email or not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+                return make_response(jsonify({"error": "Invalid email format"}), 400)
+
+            # Check if email already exists in database
+            existing_email = CustomerEmails.query.filter_by(email=email).first()
+            if existing_email:
+                return make_response(jsonify({"error": "Email already exists"}), 409)
+
+            # Create a new CustomerEmails object
+            new_email = CustomerEmails(email=email)
+            db.session.add(new_email)
+            db.session.commit()
+
+            return make_response(jsonify({"message": "Email added successfully"}), 201)
+
+        except Exception as e:
+            db.session.rollback()
+            return make_response(jsonify({"error": str(e)}), 500)
         
 
 @ns.route("/products")

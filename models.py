@@ -157,14 +157,6 @@ class CustomerEmails(db.Model, SerializerMixin):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(128), nullable=False)
 
-    @validates('email')
-    def validate_email(self, key, email):
-        if not email:
-            raise ValueError("Email address is required")
-        if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
-            raise ValueError("Invalid email format")
-        return email
-
 
 
 # CheckConstraint
