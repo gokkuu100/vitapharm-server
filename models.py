@@ -3,11 +3,10 @@ from sqlalchemy_serializer import SerializerMixin
 from sqlalchemy import CheckConstraint
 import re
 from sqlalchemy.orm import validates
-import datetime
-
 import boto3
 from botocore.exceptions import NoCredentialsError
 import uuid
+from datetime import datetime, timezone
 
 
 db = SQLAlchemy()
@@ -40,8 +39,6 @@ class Admin(db.Model, SerializerMixin):
         if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
             raise ValueError("Invalid email format")
         return email
-
-
 
 class Product(db.Model, SerializerMixin):
     __tablename__ = "products"
@@ -82,6 +79,8 @@ class ProductVariation(db.Model, SerializerMixin):
     price = db.Column(db.Integer())
     product_id = db.Column(db.ForeignKey("products.id"), nullable=False)
 
+    cartitems = db.relationship('CartItem', backref='product_variations', lazy=True)
+
     @validates('size')
     def validate_size(self, key, size):
         if not size:
@@ -106,12 +105,15 @@ class CartItem(db.Model, SerializerMixin):
     id = db.Column(db.Integer, primary_key=True)
     quantity = db.Column(db.Integer())
     session_id = db.Column(db.String(128))
+    price = db.Column(db.Integer())
 
     product_id = db.Column(db.ForeignKey('products.id'), nullable=False)
-    variation_id = db.Column(db.ForeignKey('product_variations.id'), nullable=False)
+    variation_id = db.Column(db.ForeignKey('product_variations.id'), nullable=True)
 
-    product = db.relationship('Product', backref='cart_items', lazy=True)
-    variation = db.relationship('ProductVariation', backref='cart_items', lazy=True)
+    product = db.relationship('Product', backref='cart_items')
+    variation = db.relationship('ProductVariation', backref='cart_items')
+
+    orderitems = db.relationship('OrderItem', backref='cartitems', lazy=True)
 
 
 class Order(db.Model, SerializerMixin):
@@ -123,6 +125,10 @@ class Order(db.Model, SerializerMixin):
     address = db.Column(db.String(96), nullable=False)
     town = db.Column(db.String(24), nullable=False)
     phone = db.Column(db.String(30), nullable=False)
+    deliverycost = db.Column(db.Integer(), nullable=True)
+    total_price = db.Column(db.Float, nullable=True, default=0.0)  # Total price of the order
+    status = db.Column(db.String(20), nullable=True, default='On Delivery')  # Status of the order: Pending, Paid, Shipped, etc.
+    transaction_date = db.Column(db.DateTime, nullable=True)
 
     orderitems = db.relationship('OrderItem', backref='orders', lazy=True)
 
@@ -133,6 +139,8 @@ class OrderItem(db.Model, SerializerMixin):
 
     order_id = db.Column(db.ForeignKey('orders.id'))
     product_id = db.Column(db.ForeignKey('products.id'))
+    cart_item_id = db.Column(db.Integer, db.ForeignKey('cartitems.id'))
+
 
 class Appointment(db.Model, SerializerMixin):
     __tablename__ = "appointments"
@@ -141,6 +149,22 @@ class Appointment(db.Model, SerializerMixin):
     customer_email = db.Column(db.String(128), nullable=False)
     customer_phone = db.Column(db.String(30), nullable=False)
     appointment_date = db.Column(db.DateTime, nullable=False)
+
+class CustomerEmails(db.Model, SerializerMixin):
+    __tablename__ = "customeremails"
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(128), nullable=False)
+
+
+class DiscountCode(db.Model, SerializerMixin):
+    __tablename__ = "discountcodes"
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(128), unique=True, nullable=False)
+    discount_percentage = db.Column(db.Float, nullable=False)
+    expiration_date = db.Column(db.DateTime, nullable=False) 
+
+    def is_valid(self):
+        return datetime.now(timezone.utc) < self.expiration_date
 
 
 # CheckConstraint
