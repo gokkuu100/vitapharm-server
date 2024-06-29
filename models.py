@@ -6,6 +6,7 @@ from sqlalchemy.orm import validates
 import boto3
 from botocore.exceptions import NoCredentialsError
 import uuid
+from datetime import datetime, timezone
 
 
 db = SQLAlchemy()
@@ -125,10 +126,8 @@ class Order(db.Model, SerializerMixin):
     town = db.Column(db.String(24), nullable=False)
     phone = db.Column(db.String(30), nullable=False)
     deliverycost = db.Column(db.Integer(), nullable=True)
-    checkout_request_id = db.Column(db.String(100), nullable=True)
     total_price = db.Column(db.Float, nullable=True, default=0.0)  # Total price of the order
     status = db.Column(db.String(20), nullable=True, default='On Delivery')  # Status of the order: Pending, Paid, Shipped, etc.
-    mpesa_receipt_number = db.Column(db.String(50), nullable=True)  # Mpesa receipt number
     transaction_date = db.Column(db.DateTime, nullable=True)
 
     orderitems = db.relationship('OrderItem', backref='orders', lazy=True)
@@ -156,6 +155,16 @@ class CustomerEmails(db.Model, SerializerMixin):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(128), nullable=False)
 
+
+class DiscountCode(db.Model, SerializerMixin):
+    __tablename__ = "discountcodes"
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(128), unique=True, nullable=False)
+    discount_percentage = db.Column(db.Float, nullable=False)
+    expiration_date = db.Column(db.DateTime, nullable=False) 
+
+    def is_valid(self):
+        return datetime.now(timezone.utc) < self.expiration_date
 
 
 # CheckConstraint

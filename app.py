@@ -53,7 +53,7 @@ db.init_app(app)
 migrate = Migrate(app, db)
 jwt = JWTManager(app)
 
-CORS(app, supports_credentials=True)
+CORS(app, supports_credentials=True, resources={r"/api/*": {"origins": "*"}})
 api = Api(app, title="Vitapharm API", description="List of available endpoints for vitapharm server", prefix='/api')
 
 api.add_namespace(routes_ns)
