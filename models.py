@@ -173,6 +173,8 @@ class DiscountCode(db.Model, SerializerMixin):
 
     def is_valid(self):
         return datetime.now(timezone.utc) < self.expiration_date
+    
+
 
 
 # CheckConstraint

@@ -4,3 +4,9 @@
 !.elasticbeanstalk/*.cfg.yml
 !.elasticbeanstalk/*.global.yml
 dbconnectiontest.py
+app.py
+vendor
+migrations
+.ebextensions
+.platform
+

@@ -1061,6 +1061,14 @@ class AddDiscount(Resource):
         db.session.commit()
 
         return make_response(jsonify({"message": "Discount code added successfully"}), 201)
+    
+@ns.route("/discount/validate/<string:code>")
+class ValidateDiscount(Resource):
+    def get(self, code):
+        discount = DiscountCode.query.filter_by(code=code).first()
+        if discount and discount.is_valid():
+            return make_response(jsonify({"discount_percentage": discount.discount_percentage}), 200)
+        return make_response(jsonify({"error": "Invalid or expired discount code"}), 404)
 
 
 # Replace with your actual Paystack secret key
