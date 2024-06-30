@@ -109,6 +109,7 @@ class CartItem(db.Model, SerializerMixin):
 
     product_id = db.Column(db.ForeignKey('products.id'), nullable=False)
     variation_id = db.Column(db.ForeignKey('product_variations.id'), nullable=True)
+    order_id = db.Column(db.ForeignKey('orders.id'), nullable=True)
 
     product = db.relationship('Product', backref='cart_items')
     variation = db.relationship('ProductVariation', backref='cart_items')
@@ -128,7 +129,10 @@ class Order(db.Model, SerializerMixin):
     deliverycost = db.Column(db.Integer(), nullable=True)
     total_price = db.Column(db.Float, nullable=True, default=0.0)  # Total price of the order
     status = db.Column(db.String(20), nullable=True, default='On Delivery')  # Status of the order: Pending, Paid, Shipped, etc.
-    transaction_date = db.Column(db.DateTime, nullable=True)
+    transaction_date = db.Column(db.DateTime, nullable=True, default=datetime.utcnow)
+    payment_reference = db.Column(db.String(100), nullable=True, unique=True)
+    discount_code = db.Column(db.String(128), nullable=True)
+    discount_percentage = db.Column(db.Float, nullable=True, default=0.0)
 
     orderitems = db.relationship('OrderItem', backref='orders', lazy=True)
 
@@ -140,6 +144,10 @@ class OrderItem(db.Model, SerializerMixin):
     order_id = db.Column(db.ForeignKey('orders.id'))
     product_id = db.Column(db.ForeignKey('products.id'))
     cart_item_id = db.Column(db.Integer, db.ForeignKey('cartitems.id'))
+
+    order = db.relationship('Order', back_populates='orderitems')
+    product = db.relationship('Product', back_populates='orderitems')
+
 
 
 class Appointment(db.Model, SerializerMixin):
