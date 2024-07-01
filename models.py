@@ -169,10 +169,7 @@ class DiscountCode(db.Model, SerializerMixin):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(128), unique=True, nullable=False)
     discount_percentage = db.Column(db.Float, nullable=False)
-    expiration_date = db.Column(db.DateTime, nullable=False) 
-
-    def is_valid(self):
-        return datetime.now(timezone.utc) < self.expiration_date
+    expiration_date = db.Column(db.DateTime, nullable=False, default=datetime.now(timezone.utc)) 
     
 
 

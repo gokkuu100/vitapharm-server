@@ -31,6 +31,9 @@ ns = Namespace("vitapharm", description="CRUD endpoints")
 bcrypt = Bcrypt()
 load_dotenv()
 
+
+PAYSTACK_SECRET_KEY = 'sk_test_bb4c6c67d587b34d9c23994bdbeb202d2715b3b7'
+
 #darajaAPI
 def getAccessToken():
     consumer_key = "xyyfojxRcUqE57AMT1qAlc6WLKSXZGGzwUReLA2uCQAbmqaN"
@@ -1008,38 +1011,6 @@ class CreatesOrderIdTransaction(Resource):
         db.session.commit()
 
         return make_response(jsonify({"order_id": order.id}), 201)
-    
-
-        
-
-def send_order_confirmation_email(order):
-    from app import mail
-
-    # Prepare order details for email
-    order_details = f"""
-    Payment by MPESA
-
-    Customer Name: {order.customerFirstName} {order.customerLastName}
-    Customer Email: {order.customerEmail}
-    Customer Phone: {order.phone}
-    Customer Address: {order.address}
-    Town: {order.town}
-
-    Order Items:
-    """
-    for order_item in order.orderitems:
-        cart_item = order_item.cart_item
-        product = order_item.product
-        variation = order_item.variation
-        order_details += f"\t- {product.name} ({variation.size}) (x{order_item.quantity}) - Ksh{cart_item.price:.2f}\n"
-
-    order_details += f"\nDelivery Cost: Ksh {order.deliverycost:.2f}"
-    order_details += f"\nTotal Price: Ksh {order.total_price:.2f}"
-
-    # Send email notification
-    msg = Message('New Order Placed!', sender='Vitapharm <princewalter422@gmail.com>', recipients=[order.customerEmail])
-    msg.body = order_details
-    mail.send(msg)
 
 @ns.route("/discount/add")
 class AddDiscount(Resource):
@@ -1051,11 +1022,13 @@ class AddDiscount(Resource):
 
         if not all([code, discount_percentage, expiration_date]):
             return make_response(jsonify({"error": "Missing discount code information"}), 400)
+        
+        expiration_date = datetime.strptime(expiration_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
 
         new_discount = DiscountCode(
             code=code,
             discount_percentage=discount_percentage,
-            expiration_date=datetime.strptime(expiration_date, '%Y-%m-%d')
+            expiration_date=expiration_date
         )
         db.session.add(new_discount)
         db.session.commit()
@@ -1064,36 +1037,15 @@ class AddDiscount(Resource):
     
 @ns.route("/discount/validate/<string:code>")
 class ValidateDiscount(Resource):
-    def get(self, code):
-        discount = DiscountCode.query.filter_by(code=code).first()
-        if discount and discount.is_valid():
-            return make_response(jsonify({"discount_percentage": discount.discount_percentage}), 200)
-        return make_response(jsonify({"error": "Invalid or expired discount code"}), 404)
+        def get(self, code):
+            discount = DiscountCode.query.filter_by(code=code).first()
+            if discount:
+                now = datetime.now(timezone.utc)
+                expiration_date = discount.expiration_date.replace(tzinfo=timezone.utc)
+                if now < expiration_date:
+                    return make_response(jsonify({"discount_percentage": discount.discount_percentage}), 200)
+            return make_response(jsonify({"error": "Invalid or expired discount code"}), 404)
 
 
-# Replace with your actual Paystack secret key
-PAYSTACK_SECRET_KEY = 'sk_test_bb4c6c67d587b34d9c23994bdbeb202d2715b3b7'
-paystack = Paystack(secret_key=PAYSTACK_SECRET_KEY)
 
-
-@ns.route('/pay2')
-class StartPayment(Resource):
-    def post(self):
-        data = request.json
-        headers = {
-            "Authorization": "Bearer sk_test_bb4c6c67d587b34d9c23994bdbeb202d2715b3b7",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "amount": data['amount'],
-            "email": data['email'],
-            "currency": "KES",
-            "mobile_money": {
-                "phone": "+254710000000",
-                "provider": "mpesa"
-            }
-        }
-
-        response = requests.post("https://api.paystack.co/charge", headers=headers, json=payload)
-        return make_response(jsonify(response.json(), response.status_code))
     
