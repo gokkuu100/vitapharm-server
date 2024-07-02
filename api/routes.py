@@ -917,7 +917,7 @@ class VerifyPayment(Resource):
 
         
     
-@ns.route('/webhook')
+@ns.route('/webhook2')
 class PaystackWebhook(Resource):
     def post(self):
         from app import mail, app
@@ -930,7 +930,7 @@ class PaystackWebhook(Resource):
 
             if data['event'] == 'charge.success':
                 reference = data['data']['metadata']['order_id']
-                order = Order.query.filter_by(id=reference).first()
+                order = Order.query.filter_by(id=reference).first()  # Fetch Order using order_id
                 app.logger.info(f"Payment reference received: {reference}")
 
                 if order:
@@ -943,11 +943,17 @@ class PaystackWebhook(Resource):
 
                     time_difference = current_time - payment_time
 
-                    if time_difference.total_seconds() <= 30:  # 300 seconds = 5 minutes
+                    if time_difference.total_seconds() <= 300:  # 300 seconds = 5 minutes
                         order.status = 'Paid'
                         db.session.commit()
 
-                        # Send email notification
+                        # Fetch CartItems associated with the Order's session_token
+                        cart_items = CartItem.query.filter_by(session_id=order.session_token).all()
+
+                        if not cart_items:
+                            return make_response(jsonify({"error": "No cart items found for order"}), 404)
+
+                        # Construct email details
                         order_details = f"""
                         Customer Name: {order.customerFirstName} {order.customerLastName}
                         Customer Email: {order.customerEmail}
@@ -957,17 +963,19 @@ class PaystackWebhook(Resource):
 
                         Order Items:
                         """
-                        for order_item in order.orderitems:
-                            product_name = order_item.product.name if order_item.product else "Product Not Available"
-                            quantity = order_item.quantity
-                            price = order_item.product.deal_price if (order_item.product and order_item.product.deal_price is not None) else 0.0
-                            order_details += f"\t- {product_name} (x{quantity}) - Ksh{price:.2f}\n"
+                        for cart_item in cart_items:
+                            product_name = cart_item.product.name if cart_item.product else "Product Not Available"
+                            variation = cart_item.variation.size if cart_item.variation else "Variation Not Available"
+                            quantity = cart_item.quantity
+                            price = cart_item.price
+                            order_details += f"\t- {product_name} ({variation}) (x{quantity}) - Ksh{price:.2f}\n"
 
                         order_details += f"\nDelivery Cost: Ksh {order.deliverycost:.2f}"
-                        if order.discount_code:
-                            order_details += f"\nDiscount Code: {order.discount_code}"
-                        order_details += f"\nTotal Price: Ksh {order.total_price:.2f}"
+                        if order.discount_code_applied:
+                            order_details += f"\nDiscount Code: {order.discount_code_applied}"
+                        order_details += f"\nTotal Price: Ksh {order.original_total:.2f}"
 
+                        # Send email notification
                         msg = Message('Payment Successful!', sender='Vitapharm <princewalter422@gmail.com>', recipients=[order.customerEmail])
                         msg.body = order_details
                         mail.send(msg)
@@ -976,30 +984,23 @@ class PaystackWebhook(Resource):
                     else:
                         return make_response(jsonify({"error": "Payment processed outside allowable time window"}), 400)
                 else:
-                    logger.warning(f"Order not found for payment reference: {reference}")
+                    app.logger.warning(f"Order not found for payment reference: {reference}")
                     return make_response(jsonify({"error": "Order not found"}), 404)
             else:
-                logger.warning(f"Unhandled event received: {data['event']}")
+                app.logger.warning(f"Unhandled event received: {data['event']}")
                 return make_response(jsonify({"error": "Event not handled"}), 400)
 
         except Exception as e:
-            logger.error(f"Error processing webhook: {str(e)}")
+            app.logger.error(f"Error processing webhook: {str(e)}")
             return make_response(jsonify({"error": "An error occurred while processing the webhook"}), 500)
         
 @ns.route('/create-order')
 class CreatesOrderIdTransaction(Resource):
+    @jwt_required()
     def post(self):
         data = request.get_json()
 
-        discount_code = data.get('discount_code')
-        discount_percentage = 0.0
-        if discount_code:
-            discount = DiscountCode.query.filter_by(code=discount_code).first()
-            if discount and discount.is_valid():
-                discount_percentage = discount.discount_percentage
-
-        # Calculate discounted total price
-        total_price = data['total'] * (1 - discount_percentage / 100)
+        session_token = get_jwt_identity()
 
         order = Order(
             customerFirstName=data['customerFirstName'],
@@ -1010,8 +1011,11 @@ class CreatesOrderIdTransaction(Resource):
             address=data['address'],
             deliverycost=data['deliverycost'],
             status='Pending',
-            discount_code=discount_code,
-            total_price=total_price
+            discounted_total=data['discounted_total'],
+            discount_percentage=data['discount_percentage'],
+            original_total=data['original_total'],
+            discount_code_applied=data['discount_code_applied'],
+            session_token=session_token
         )
         db.session.add(order)
         db.session.commit()
@@ -1049,8 +1053,101 @@ class ValidateDiscount(Resource):
                 now = datetime.now(timezone.utc)
                 expiration_date = discount.expiration_date.replace(tzinfo=timezone.utc)
                 if now < expiration_date:
-                    return make_response(jsonify({"discount_percentage": discount.discount_percentage}), 200)
+                    return make_response(jsonify({"discount_percentage": discount.discount_percentage, "code": discount.code}), 200)
             return make_response(jsonify({"error": "Invalid or expired discount code"}), 404)
+
+
+@ns.route('/webhook')
+class PaystackWebhook(Resource):
+    def post(self):
+        try:
+            from app import app
+            if not verify_paystack_signature(request):
+                app.logger.warning("Invalid Paystack signature")
+                return make_response(jsonify({"error": "Invalid signature"}), 400)
+            
+            data = request.get_json()
+
+            if data['event'] == 'charge.success':
+                reference = data['data']['metadata']['order_id']
+                order = Order.query.filter_by(id=reference).first()  # Fetch Order using order_id
+                app.logger.info(f"Payment reference received: {reference}")
+
+                if not order:
+                    return make_response(jsonify({"error": "Order not found in webhook data"}), 400)
+
+                # Ensure the payment was recently processed (within 5 minutes)
+                payment_time_str = data['data']['paidAt']
+                payment_time = datetime.strptime(payment_time_str, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
+
+                # Convert current time to UTC for comparison
+                current_time = datetime.now(timezone.utc)
+
+                time_difference = current_time - payment_time
+
+                if time_difference.total_seconds() <= 300:  # 300 seconds = 5 minutes
+                    order.status = 'Paid'
+                    db.session.commit()
+                    
+                    # Use session_token to filter cart items
+                    cart_items = CartItem.query.filter_by(session_id=order.session_token).all()
+
+                    if not cart_items:
+                        return make_response(jsonify({"error": "No cart items found for session token"}), 404)
+
+                    # Send email notification with order details
+                    order_details = construct_order_details(order, cart_items)
+                    send_order_confirmation_email(order.customerEmail, order_details)
+
+                    for cart_item in cart_items:
+                            db.session.delete(cart_item)
+
+                    db.session.commit()
+
+                    return make_response(jsonify({"message": "Webhook processed successfully"}), 200)
+                else:
+                    return make_response(jsonify({"error": "Payment processed outside allowable time window"}), 400)
+
+            else:
+                return make_response(jsonify({"error": "Unhandled event received"}), 400)
+
+        except Exception as e:
+            app.logger.error(f"Error processing webhook: {str(e)}")
+            return make_response(jsonify({"error": "An error occurred while processing the webhook"}), 500)
+
+# Helper function to construct order details for email
+def construct_order_details(order, cart_items):
+    order_details = f"""
+    Customer Name: {order.customerFirstName} {order.customerLastName}
+    Customer Email: {order.customerEmail}
+    Customer Phone: {order.phone}
+    Customer Address: {order.address}
+    Town: {order.town}
+
+    Order Items:
+    """
+    for cart_item in cart_items:
+        product_name = cart_item.products.name if cart_item.products else "Product Not Available"
+        quantity = cart_item.quantity
+        price = cart_item.products.deal_price if (cart_item.products and cart_item.products.deal_price is not None) else 0.0
+        order_details += f"\t- {product_name} (x{quantity}) - Ksh{price:.2f}\n"
+
+    order_details += f"\nDelivery Cost: Ksh {order.deliverycost:.2f}"
+    if order.discount_code_applied:
+        order_details += f"\nDiscount Code: {order.discount_code_applied}"
+    order_details += f"\nTotal Price: Ksh {order.discounted_total:.2f}"
+
+    return order_details
+
+# Helper function to send order confirmation email
+def send_order_confirmation_email(recipient_email, order_details):
+    from app import mail, app
+    try:
+        msg = Message('Payment Successful!', sender='Vitapharm <princewalter422@gmail.com>', recipients=[recipient_email])
+        msg.body = order_details
+        mail.send(msg)
+    except Exception as e:
+        app.logger.error(f"Error sending email: {str(e)}")
 
 
 

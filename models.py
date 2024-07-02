@@ -127,13 +127,15 @@ class Order(db.Model, SerializerMixin):
     town = db.Column(db.String(24), nullable=False)
     phone = db.Column(db.String(30), nullable=False)
     deliverycost = db.Column(db.Integer(), nullable=True)
-    total_price = db.Column(db.Float, nullable=True, default=0.0)  # Total price of the order
-    status = db.Column(db.String(20), nullable=True, default='On Delivery')  # Status of the order: Pending, Paid, Shipped, etc.
+    original_total = db.Column(db.Float, nullable=True, default=0.0)  # Total price of the order
+    status = db.Column(db.String(20), nullable=True)  # Status of the order: Pending, Paid, Shipped, etc.
     transaction_date = db.Column(db.DateTime, nullable=True, default=datetime.utcnow)
     payment_reference = db.Column(db.String(100), nullable=True, unique=True)
-    discount_code = db.Column(db.String(128), nullable=True)
+    discount_code_applied = db.Column(db.String(128), nullable=True)
     discount_percentage = db.Column(db.Float, nullable=True, default=0.0)
-
+    discounted_total = db.Column(db.Float, nullable=True)
+    session_token = db.Column(db.String(256), nullable=True)
+    
     orderitems = db.relationship('OrderItem', backref='orders', lazy=True)
 
 class OrderItem(db.Model, SerializerMixin):
@@ -158,6 +160,7 @@ class Appointment(db.Model, SerializerMixin):
     customer_phone = db.Column(db.String(30), nullable=False)
     appointment_type = db.Column(db.String(128), nullable=False)
     appointment_date = db.Column(db.DateTime, nullable=False)
+    
 
 class CustomerEmails(db.Model, SerializerMixin):
     __tablename__ = "customeremails"
