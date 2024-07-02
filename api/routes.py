@@ -706,8 +706,11 @@ class BookAppointment(Resource):
     def post(self):
         from app import mail
         try:
+            if request.is_json:
+                data = request.get_json()
+            else:
+                data = {key: request.form[key] for key in request.form}
 
-            data = request.get_json()
             customer_name = data.get('customer_name')
             customer_email = data.get('customer_email')
             customer_phone = data.get('customer_phone')
