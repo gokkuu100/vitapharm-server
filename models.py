@@ -156,6 +156,7 @@ class Appointment(db.Model, SerializerMixin):
     customer_name = db.Column(db.String(128), nullable=False)
     customer_email = db.Column(db.String(128), nullable=False)
     customer_phone = db.Column(db.String(30), nullable=False)
+    appointment_type = db.Column(db.String(128), nullable=False)
     appointment_date = db.Column(db.DateTime, nullable=False)
 
 class CustomerEmails(db.Model, SerializerMixin):

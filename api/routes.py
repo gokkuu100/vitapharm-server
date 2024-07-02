@@ -712,15 +712,17 @@ class BookAppointment(Resource):
             customer_email = data.get('customer_email')
             customer_phone = data.get('customer_phone')
             appointment_date = data.get('appointment_date')
+            appointment_type = data.get('appointment_type')
 
-            if not all([customer_name, customer_email, customer_phone, appointment_date]):
+            if not all([customer_name, customer_email, customer_phone, appointment_date, appointment_type]):
                 return make_response(jsonify({"error": "Missing fields"}), 400)
             
             new_appointment = Appointment(
                 customer_name=customer_name,
                 customer_email=customer_email,
                 customer_phone=customer_phone,
-                appointment_date=appointment_date
+                appointment_date=appointment_date,
+                appointment_type=appointment_type
             )
 
             db.session.add(new_appointment)
@@ -750,7 +752,8 @@ class BookAppointment(Resource):
                     "customer_name": appointment.customer_name,
                     "customer_email": appointment.customer_email,
                     "customer_phone": appointment.customer_phone,
-                    "date": appointment.appointment_date
+                    "date": appointment.appointment_date,
+                    "type": appointment.appointment_type
                 }
                 appointment_list.append(appointment_data)
             return make_response(jsonify(appointment_list), 200)
