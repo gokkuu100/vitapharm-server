@@ -6,7 +6,7 @@ from jwt.exceptions import DecodeError
 from datetime import datetime, timedelta
 from flask_bcrypt import Bcrypt
 from models import Admin, db, Product, Image, CartItem, Appointment, Order, OrderItem, ProductVariation, CustomerEmails, DiscountCode
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import json
 import secrets
 from sqlalchemy import or_
@@ -15,18 +15,20 @@ import logging
 import time
 import requests
 from requests.auth import HTTPBasicAuth
-import base64
 import re
 import hashlib
 import hmac
 from dotenv import load_dotenv
+import logging
 
-from paystackapi.paystack import Paystack
-from paystackapi.transaction import Transaction
+logger = logging.getLogger(__name__)
 
 ns = Namespace("vitapharm", description="CRUD endpoints")
 bcrypt = Bcrypt()
 load_dotenv()
+
+
+PAYSTACK_SECRET_KEY = 'sk_test_bb4c6c67d587b34d9c23994bdbeb202d2715b3b7'
 
 #darajaAPI
 def getAccessToken():
@@ -49,6 +51,21 @@ def generate_session_token():
 # Extracts session identity
 def get_session_identity():
     return get_jwt_identity()
+
+
+def verify_paystack_signature(request):
+    signature = request.headers.get('x-paystack-signature')
+    if not signature:
+        return False
+
+    payload = request.get_data()
+    generated_signature = hmac.new(
+        PAYSTACK_SECRET_KEY.encode('utf-8'),
+        payload,
+        hashlib.sha512
+    ).hexdigest()
+
+    return hmac.compare_digest(generated_signature, signature)
 
 # JWT session-management
 @ns.route("/session")
@@ -685,21 +702,26 @@ class BookAppointment(Resource):
     def post(self):
         from app import mail
         try:
+            if request.is_json:
+                data = request.get_json()
+            else:
+                data = {key: request.form[key] for key in request.form}
 
-            data = request.get_json()
             customer_name = data.get('customer_name')
             customer_email = data.get('customer_email')
             customer_phone = data.get('customer_phone')
             appointment_date = data.get('appointment_date')
+            appointment_type = data.get('appointment_type')
 
-            if not all([customer_name, customer_email, customer_phone, appointment_date]):
+            if not all([customer_name, customer_email, customer_phone, appointment_date, appointment_type]):
                 return make_response(jsonify({"error": "Missing fields"}), 400)
             
             new_appointment = Appointment(
                 customer_name=customer_name,
                 customer_email=customer_email,
                 customer_phone=customer_phone,
-                appointment_date=appointment_date
+                appointment_date=appointment_date,
+                appointment_type=appointment_type
             )
 
             db.session.add(new_appointment)
@@ -729,7 +751,8 @@ class BookAppointment(Resource):
                     "customer_name": appointment.customer_name,
                     "customer_email": appointment.customer_email,
                     "customer_phone": appointment.customer_phone,
-                    "date": appointment.appointment_date
+                    "date": appointment.appointment_date,
+                    "type": appointment.appointment_type
                 }
                 appointment_list.append(appointment_data)
             return make_response(jsonify(appointment_list), 200)
@@ -861,23 +884,35 @@ class VerifyPayment(Resource):
     def post(self):
         data = request.get_json()
         reference = data.get('reference')
-
-        if not reference:
-            return make_response(jsonify({"error": "Payment reference not provided"}), 400)
+        order_id = data.get('order_id')
 
         headers = {
             "Authorization": f"Bearer {PAYSTACK_SECRET_KEY}",
             "Content-Type": "application/json",
         }
-        
+
         response = requests.get(f"https://api.paystack.co/transaction/verify/{reference}", headers=headers)
         result = response.json()
-        print(result)
 
-        if response.status_code == 200 and result.get('data', {}).get('status') == 'success':
-            # Save order to database
-            # (Logic to save the order goes here)
-            return make_response(jsonify({"message": "Payment verified successfully"}), 200)
+        if result['status'] and result['data']['status'] == 'success':
+            try:
+                order = Order.query.filter_by(id=order_id).first()
+                if order:
+                    order.payment_reference = reference
+                    order.status = 'Paid'
+
+                    cart_items = CartItem.query.filter_by(session_id=order.session_token).all()
+                    for item in cart_items:
+                        item.status = 'Paid'
+
+                    db.session.commit()
+
+                    return make_response(jsonify({"message": "Payment verified successfully", "order_id": order.id}), 200)
+                else:
+                    return make_response(jsonify({"error": "Order not found"}), 404)
+            except Exception as e:
+                db.session.rollback()
+                return make_response(jsonify({"error": str(e)}), 500)
         else:
             return make_response(jsonify({"error": "Payment verification failed"}), 400)
         
@@ -885,107 +920,115 @@ class VerifyPayment(Resource):
 @ns.route('/webhook')
 class PaystackWebhook(Resource):
     def post(self):
-        from app import mail
+        from app import mail, app
+        try:
+            if not verify_paystack_signature(request):
+                app.logger.warning("Invalid Paystack signature")
+                return make_response(jsonify({"error": "Invalid signature"}), 400)
+            
+            data = request.get_json()
+
+            if data['event'] == 'charge.success':
+                reference = data['data']['metadata']['order_id']
+                order = Order.query.filter_by(id=reference).first()  # Fetch Order using order_id
+                app.logger.info(f"Payment reference received: {reference}")
+
+                if order:
+                    # Ensure the payment was recently processed (within 5 minutes)
+                    payment_time_str = data['data']['paidAt']
+                    payment_time = datetime.strptime(payment_time_str, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
+
+                    # Convert current time to UTC for comparison
+                    current_time = datetime.now(timezone.utc)
+
+                    time_difference = current_time - payment_time
+
+                    if time_difference.total_seconds() <= 300:  # 300 seconds = 5 minutes
+                        order.status = 'Paid'
+                        db.session.commit()
+
+                        # Fetch CartItems associated with the Order's session_token
+                        cart_items = CartItem.query.filter_by(session_id=order.session_token).all()
+
+                        if not cart_items:
+                            return make_response(jsonify({"error": "No cart items found for order"}), 404)
+
+                        # Construct email details
+                        order_details = f"""
+                        Customer Name: {order.customerFirstName} {order.customerLastName}
+                        Customer Email: {order.customerEmail}
+                        Customer Phone: {order.phone}
+                        Customer Address: {order.address}
+                        Town: {order.town}
+
+                        Order Items:
+                        """
+                        for cart_item in cart_items:
+                            product_name = cart_item.product.name if cart_item.product else "Product Not Available"
+                            variation = cart_item.variation.size if cart_item.variation else "Variation Not Available"
+                            quantity = cart_item.quantity
+                            price = cart_item.price
+                            order_details += f"\t- {product_name} ({variation}) (x{quantity}) - Ksh{price:.2f}\n"
+
+                        order_details += f"\nDelivery Cost: Ksh {order.deliverycost:.2f}"
+                        if order.discount_code_applied:
+                            order_details += f"\nDiscount Code: {order.discount_code_applied}"
+                        order_details += f"\nOriginal Price: Ksh {order.original_total:.2f}"
+                        order_details += f"\nDiscounted Total Price: Ksh {order.discounted_total:.2f}"
+
+
+
+                        # Send email notification
+                        msg = Message('Payment Successful!', sender='Vitapharm <princewalter422@gmail.com>', recipients=[order.customerEmail])
+                        msg.body = order_details
+                        mail.send(msg)
+
+                        for cart_item in cart_items:
+                            db.session.delete(cart_item)
+
+                        db.session.commit()
+
+                        return make_response(jsonify({"message": "Webhook processed successfully"}), 200)
+                    else:
+                        return make_response(jsonify({"error": "Payment processed outside allowable time window"}), 400)
+                else:
+                    app.logger.warning(f"Order not found for payment reference: {reference}")
+                    return make_response(jsonify({"error": "Order not found"}), 404)
+            else:
+                app.logger.warning(f"Unhandled event received: {data['event']}")
+                return make_response(jsonify({"error": "Event not handled"}), 400)
+
+        except Exception as e:
+            app.logger.error(f"Error processing webhook: {str(e)}")
+            return make_response(jsonify({"error": "An error occurred while processing the webhook"}), 500)
+        
+@ns.route('/create-order')
+class CreatesOrderIdTransaction(Resource):
+    @jwt_required()
+    def post(self):
         data = request.get_json()
 
-        # Verify the event by checking the signature
-        signature = request.headers.get('x-paystack-signature')
-        secret = PAYSTACK_SECRET_KEY.encode('utf-8')
-        payload = request.get_data()
-        
-        expected_signature = hmac.new(secret, payload, hashlib.sha512).hexdigest()
-        
-        if signature == expected_signature:
-            event = data.get('event')
-            if event == 'charge.success':
-                # Handle successful payment event
-                reference = data['data']['reference']
+        session_token = get_jwt_identity()
 
-                order = Order.query.filter_by(payment_reference=reference).first()
-                if not order:
-                    return make_response(jsonify({"error": "Order not found"}), 400)
-                
-                order.status = 'Paid'
-                db.session.commit()
+        order = Order(
+            customerFirstName=data['customerFirstName'],
+            customerLastName=data['customerLastName'],
+            customerEmail=data['customerEmail'],
+            town=data['town'],
+            phone=data['phone'],
+            address=data['address'],
+            deliverycost=data['deliverycost'],
+            status='Pending',
+            discounted_total=data['discounted_total'],
+            discount_percentage=data['discount_percentage'],
+            original_total=data['original_total'],
+            discount_code_applied=data['discount_code_applied'],
+            session_token=session_token
+        )
+        db.session.add(order)
+        db.session.commit()
 
-                cart_items = CartItem.query.filter_by(session_id=order.session_id).all()
-                # Calculate total price
-                total_price = order.deliverycost
-                for cart_item in cart_items:
-                    item_price = cart_item.price * cart_item.quantity
-                    total_price += item_price
-
-                if order.discount_percentage > 0:
-                    total_price = total_price * (1 - order.discount_percentage / 100)
-                
-                # Generate order details
-                order_details = f"""
-                Customer Name: {order.customerFirstName} {order.customerLastName}
-                Customer Email: {order.customerEmail}
-                Customer Phone: {order.phone}
-                Customer Address: {order.address}
-                Town: {order.town}
-
-                Order Items:
-                """
-                for cart_item in cart_items:
-                    product = cart_item.products
-                    variation = cart_item.variation
-                    order_details += f"\t- {product.name} ({variation.size}) (x{cart_item.quantity}) - Ksh{cart_item.price:.2f}\n"
-
-                order_details += f"\nDelivery Cost: Ksh {order.deliverycost:.2f}"
-                if order.discount_code:
-                    order_details += f"\nDiscount Code: {order.discount_code}\nDiscount Applied: {order.discount_percentage}%"
-                order_details += f"\nTotal Price: Ksh {total_price:.2f}"
-
-                # Send email notification
-                msg = Message('Order Payment Successful', sender='Vitapharm <princewalter422@gmail.com>', recipients=[order.customerEmail])
-                msg.body = order_details
-                mail.send(msg)
-
-                # Clean up the cart items
-                for cart_item in cart_items:
-                    db.session.delete(cart_item)
-
-                db.session.commit()
-
-                # (Logic to update order status and notify the user goes here)
-                return make_response(jsonify({"status": "success"}), 200)
-            else:
-                return make_response(jsonify({"status": "ignored"}), 200)
-        else:
-            return make_response(jsonify({"status": "unauthorized"}), 401)
-
-        
-
-def send_order_confirmation_email(order):
-    from app import mail
-
-    # Prepare order details for email
-    order_details = f"""
-    Payment by MPESA
-
-    Customer Name: {order.customerFirstName} {order.customerLastName}
-    Customer Email: {order.customerEmail}
-    Customer Phone: {order.phone}
-    Customer Address: {order.address}
-    Town: {order.town}
-
-    Order Items:
-    """
-    for order_item in order.orderitems:
-        cart_item = order_item.cart_item
-        product = order_item.product
-        variation = order_item.variation
-        order_details += f"\t- {product.name} ({variation.size}) (x{order_item.quantity}) - Ksh{cart_item.price:.2f}\n"
-
-    order_details += f"\nDelivery Cost: Ksh {order.deliverycost:.2f}"
-    order_details += f"\nTotal Price: Ksh {order.total_price:.2f}"
-
-    # Send email notification
-    msg = Message('New Order Placed!', sender='Vitapharm <princewalter422@gmail.com>', recipients=[order.customerEmail])
-    msg.body = order_details
-    mail.send(msg)
+        return make_response(jsonify({"order_id": order.id}), 201)
 
 @ns.route("/discount/add")
 class AddDiscount(Resource):
@@ -997,41 +1040,30 @@ class AddDiscount(Resource):
 
         if not all([code, discount_percentage, expiration_date]):
             return make_response(jsonify({"error": "Missing discount code information"}), 400)
+        
+        expiration_date = datetime.strptime(expiration_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
 
         new_discount = DiscountCode(
             code=code,
             discount_percentage=discount_percentage,
-            expiration_date=datetime.strptime(expiration_date, '%Y-%m-%d')
+            expiration_date=expiration_date
         )
         db.session.add(new_discount)
         db.session.commit()
 
         return make_response(jsonify({"message": "Discount code added successfully"}), 201)
+    
+@ns.route("/discount/validate/<string:code>")
+class ValidateDiscount(Resource):
+        def get(self, code):
+            discount = DiscountCode.query.filter_by(code=code).first()
+            if discount:
+                now = datetime.now(timezone.utc)
+                expiration_date = discount.expiration_date.replace(tzinfo=timezone.utc)
+                if now < expiration_date:
+                    return make_response(jsonify({"discount_percentage": discount.discount_percentage, "code": discount.code}), 200)
+            return make_response(jsonify({"error": "Invalid or expired discount code"}), 404)
 
 
-# Replace with your actual Paystack secret key
-PAYSTACK_SECRET_KEY = 'sk_test_bb4c6c67d587b34d9c23994bdbeb202d2715b3b7'
-paystack = Paystack(secret_key=PAYSTACK_SECRET_KEY)
 
-
-@ns.route('/pay2')
-class StartPayment(Resource):
-    def post(self):
-        data = request.json
-        headers = {
-            "Authorization": "Bearer sk_test_bb4c6c67d587b34d9c23994bdbeb202d2715b3b7",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "amount": data['amount'],
-            "email": data['email'],
-            "currency": "KES",
-            "mobile_money": {
-                "phone": "+254710000000",
-                "provider": "mpesa"
-            }
-        }
-
-        response = requests.post("https://api.paystack.co/charge", headers=headers, json=payload)
-        return make_response(jsonify(response.json(), response.status_code))
     
