@@ -904,6 +904,11 @@ class VerifyPayment(Resource):
                 if order:
                     order.payment_reference = reference
                     order.status = 'Paid'
+
+                    cart_items = CartItem.query.filter_by(session_id=order.session_token).all()
+                    for item in cart_items:
+                        item.status = 'Paid'
+
                     db.session.commit()
 
                     return make_response(jsonify({"message": "Payment verified successfully", "order_id": order.id}), 200)
@@ -917,7 +922,7 @@ class VerifyPayment(Resource):
 
         
     
-@ns.route('/webhook2')
+@ns.route('/webhook')
 class PaystackWebhook(Resource):
     def post(self):
         from app import mail, app
@@ -979,6 +984,11 @@ class PaystackWebhook(Resource):
                         msg = Message('Payment Successful!', sender='Vitapharm <princewalter422@gmail.com>', recipients=[order.customerEmail])
                         msg.body = order_details
                         mail.send(msg)
+
+                        for cart_item in cart_items:
+                            db.session.delete(cart_item)
+
+                        db.session.commit()
 
                         return make_response(jsonify({"message": "Webhook processed successfully"}), 200)
                     else:
@@ -1057,7 +1067,7 @@ class ValidateDiscount(Resource):
             return make_response(jsonify({"error": "Invalid or expired discount code"}), 404)
 
 
-@ns.route('/webhook')
+@ns.route('/webhook2')
 class PaystackWebhook(Resource):
     def post(self):
         try:

@@ -106,6 +106,7 @@ class CartItem(db.Model, SerializerMixin):
     quantity = db.Column(db.Integer())
     session_id = db.Column(db.String(128))
     price = db.Column(db.Integer())
+    status = db.Column(db.String(64), default='unpaid', nullable=True)
 
     product_id = db.Column(db.ForeignKey('products.id'), nullable=False)
     variation_id = db.Column(db.ForeignKey('product_variations.id'), nullable=True)
