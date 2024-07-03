@@ -1,6 +1,5 @@
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy_serializer import SerializerMixin
-from sqlalchemy import CheckConstraint
 import re
 from sqlalchemy.orm import validates
 import boto3
