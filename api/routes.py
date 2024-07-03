@@ -978,7 +978,10 @@ class PaystackWebhook(Resource):
                         order_details += f"\nDelivery Cost: Ksh {order.deliverycost:.2f}"
                         if order.discount_code_applied:
                             order_details += f"\nDiscount Code: {order.discount_code_applied}"
-                        order_details += f"\nTotal Price: Ksh {order.original_total:.2f}"
+                        order_details += f"\nOriginal Price: Ksh {order.original_total:.2f}"
+                        order_details += f"\Discounted Total Price: Ksh {order.discounted_total:.2f}"
+
+
 
                         # Send email notification
                         msg = Message('Payment Successful!', sender='Vitapharm <princewalter422@gmail.com>', recipients=[order.customerEmail])
