@@ -979,7 +979,7 @@ class PaystackWebhook(Resource):
                         if order.discount_code_applied:
                             order_details += f"\nDiscount Code: {order.discount_code_applied}"
                         order_details += f"\nOriginal Price: Ksh {order.original_total:.2f}"
-                        order_details += f"\Discounted Total Price: Ksh {order.discounted_total:.2f}"
+                        order_details += f"\nDiscounted Total Price: Ksh {order.discounted_total:.2f}"
 
 
 
