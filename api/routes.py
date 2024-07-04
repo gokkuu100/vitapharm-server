@@ -90,7 +90,6 @@ class Hello(Resource):
     def get(self):
         return "Welcome to the first route"
 
-
 @ns.route("/signup")
 class AdminSignup(Resource):
     def post(self):
@@ -118,17 +117,34 @@ class AdminSignup(Resource):
             db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
         
+@ns.route("/admin/login")
+class AdminLogin(Resource):
+    def post(self):
+        try:
+            data = request.get_json()
+            email = data.get('email')
+            password = data.get('password')
+
+            if not email or not password:
+                return make_response(jsonify({"error": "Invalid email or password"}), 400)
+            
+            user = Admin.query.filter_by(email=email).first()
+            if not user or not bcrypt.check_password_hash(user.password, password):
+                return make_response(jsonify({"error": "Invalid email or password"}), 401)
+            
+            access_token = create_access_token(identity={"email": user.email})
+            return make_response(jsonify({"access_token": access_token}), 200)
+        except Exception as e:
+            return make_response(jsonify({"error": str(e)}), 500)
+        
 @ns.route("/customeremails")
 class CustomerEmailsResource(Resource):
+    @jwt_required(optional=True)
     def get(self):
         try:
-            # Query all customer emails from the database
             customer_emails = CustomerEmails.query.all()
-
-            # Serialize customer emails using SerializerMixin
             serialized_emails = [email.to_dict() for email in customer_emails]
 
-            # Return JSON response
             return jsonify(serialized_emails), 200
 
         except Exception as e:
@@ -138,16 +154,13 @@ class CustomerEmailsResource(Resource):
             data = request.get_json()
             email = data.get('email')
 
-            # Validate email format
             if not email or not re.match(r"[^@]+@[^@]+\.[^@]+", email):
                 return make_response(jsonify({"error": "Invalid email format"}), 400)
 
-            # Check if email already exists in database
             existing_email = CustomerEmails.query.filter_by(email=email).first()
             if existing_email:
                 return make_response(jsonify({"error": "Email already exists"}), 409)
 
-            # Create a new CustomerEmails object
             new_email = CustomerEmails(email=email)
             db.session.add(new_email)
             db.session.commit()
@@ -161,6 +174,7 @@ class CustomerEmailsResource(Resource):
 
 @ns.route("/products")
 class NewProduct(Resource):
+    @jwt_required(optional=True)
     def post(self):
         try:
             if request.is_json:
@@ -267,8 +281,8 @@ class NewProduct(Resource):
 
 @ns.route( "/products/<int:productId>")
 class SingleProduct(Resource):
-    # @cache.cached(timeout=3600, key_prefix='single_product:%s')
-    def get(self, productId):  # <-- Add productId argument here
+    @jwt_required(optional=True)
+    def get(self, productId): 
         try:
             # Retrieve the product based on productId
             product = Product.query.get(productId)
@@ -318,7 +332,6 @@ class SingleProduct(Resource):
         
     def patch(self, productId):
         try:
-            # Checks if product exists
             product = Product.query.get(productId)
             if not product:
                 return make_response(jsonify({"error": "Product not found"}), 404)
@@ -381,72 +394,6 @@ class SingleProduct(Resource):
             return make_response(jsonify({"message": "Product deleted successfully"}), 200)
         except Exception as e:
             db.session.rollback()
-            return make_response(jsonify({"error": str(e)}), 500)
-        
-
-@ns.route("/products/deals")
-class QueryDate(Resource):
-    def get(self):
-        try:
-            # Get the date from query parameters
-            date_str = request.args.get('date')
-            if not date_str:
-                return make_response(jsonify({"error": "Date parameter is required"}), 400)
-            
-            # Convert the date from string to datetime object
-            try:
-                query_date = datetime.strptime(date_str, "%Y-%m-%d")
-            except ValueError:
-                return make_response(jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400)
-
-            # Query the products with active deals on the given date
-            products = Product.query.filter(
-                Product.deal_price.isnot(None),
-                Product.deal_start_time <= query_date,
-                Product.deal_end_time >= query_date
-            ).all()
-
-            # Format the response
-            products_data = []
-            for product in products:
-                product_data = {
-                    "id": product.id,
-                    "name": product.name,
-                    "description": product.description,
-                    "brand": product.brand,
-                    "category": product.category,
-                    "sub_category": product.sub_category,
-                    "admin_id": product.admin_id,
-                    "deal_price": product.deal_price,
-                    "deal_start_time": product.deal_start_time,
-                    "deal_end_time": product.deal_end_time,
-                    "variations": [],
-                    "images": []
-                }
-
-                # Add variations
-                variations = ProductVariation.query.filter_by(product_id=product.id).all()
-                for item in variations:
-                    data = {
-                        "id": item.id,
-                        "size": item.size,
-                        "price": item.price
-                    }
-                    product_data["variations"].append(data)
-
-                # Add images
-                images = Image.query.filter_by(product_id=product.id).all()
-                for image in images:
-                    image_data = {
-                        "id": image.id,
-                        "url": image.url
-                    }
-                    product_data["images"].append(image_data)
-
-                products_data.append(product_data)
-
-            return make_response(jsonify(products_data), 200)
-        except Exception as e:
             return make_response(jsonify({"error": str(e)}), 500)
         
 # adds items to cart
@@ -529,20 +476,18 @@ class Cart(Resource):
         except Exception as e:
             return make_response(jsonify({"error": str(e)}), 500)
     
-# updates quantity of the cartitems
 @ns.route("/cart/update")
 class UpdateCartItem(Resource):
     @jwt_required(optional=True)
     def post(self):
         try:
-            # retrieves sessionId from cookies
+            # retrieves sessionId 
             session_identity = get_session_identity()
 
             data = request.get_json()
             product_id = data.get('product_id')
             quantity_change = data.get('quantity_change')  
 
-            # Retrieves the cart item associated with the session ID and product ID
             cart_item = CartItem.query.filter_by(session_id=session_identity, product_id=product_id).first()
 
             if cart_item:
@@ -590,6 +535,7 @@ class RemoveFromCart(Resource):
 # search filter
 @ns.route("/products/search")
 class ProductSearch(Resource):
+    @jwt_required(optional=True)
     def get(self):
         try:
             # gets the search query parameters
@@ -598,9 +544,8 @@ class ProductSearch(Resource):
             sub_category = request.args.get('sub_category', '')
             name = request.args.get('name', '')
 
-            print(f"Brand: {brand}, Category: {category}, Sub-category: {sub_category},  Name: {name}")  # Debugging line
+            print(f"Brand: {brand}, Category: {category}, Sub-category: {sub_category},  Name: {name}")  
 
-            # Create an empty list to hold filter conditions
             filters = []
 
             if brand:
@@ -654,6 +599,7 @@ class ProductSearch(Resource):
 # products on offer
 @ns.route("/products/offer")
 class ProductsOnOffer(Resource):
+    @jwt_required(optional=True)
     def get(self):
         try:
             today = datetime.date.today()
@@ -680,8 +626,18 @@ class ProductsOnOffer(Resource):
                     "category": product.category,
                     "sub_category": product.sub_category,
                     "admin_id": product.admin_id,
+                    "variations": [],
                     "images": []
                 }
+                variations = ProductVariation.query.filter_by(product_id=product.id).all()
+                for item in variations:
+                    data = {
+                        "id": item.id,
+                        "size": item.size,
+                        "price": item.price
+                    }
+                    product_data["variations"].append(data)
+
                 images = Image.query.filter_by(product_id=product.id).all()
                 for image in images:
                     image_data = {
@@ -699,6 +655,7 @@ class ProductsOnOffer(Resource):
 # book appointment
 @ns.route("/book")
 class BookAppointment(Resource):
+    @jwt_required(optional=True)
     def post(self):
         from app import mail
         try:
@@ -727,7 +684,6 @@ class BookAppointment(Resource):
             db.session.add(new_appointment)
             db.session.commit()
             
-            # using flask-mail
             msg = Message('Appointment Booking Confirmation', sender='Vitapharm <princewalter422@gmail.com>', recipients=[customer_email])
             msg.body = f"""Hi {customer_name}, This email confirms your request for an appointment booking at Vitapharm. Kindly wait as you receive a confirmation call from us."""
             mail.send(msg)
@@ -762,7 +718,7 @@ class BookAppointment(Resource):
         
 @ns.route("/order/place")
 class PlaceOrder(Resource):
-    @jwt_required(optional=True)
+    @jwt_required()
     def post(self):
         try:
             from app import mail
@@ -878,6 +834,67 @@ class PlaceOrder(Resource):
             db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
         
+@ns.route('/create-order')
+class CreatesOrderIdTransaction(Resource):
+    @jwt_required()
+    def post(self):
+        data = request.get_json()
+
+        session_token = get_jwt_identity()
+
+        order = Order(
+            customerFirstName=data['customerFirstName'],
+            customerLastName=data['customerLastName'],
+            customerEmail=data['customerEmail'],
+            town=data['town'],
+            phone=data['phone'],
+            address=data['address'],
+            deliverycost=data['deliverycost'],
+            status='Pending',
+            discounted_total=data['discounted_total'],
+            discount_percentage=data['discount_percentage'],
+            original_total=data['original_total'],
+            discount_code_applied=data['discount_code_applied'],
+            session_token=session_token
+        )
+        db.session.add(order)
+        db.session.commit()
+
+        return make_response(jsonify({"order_id": order.id}), 201)
+        
+@ns.route("/orders")
+class GetAllOrders(Resource):
+    @jwt_required()
+    def get(self):
+        try:
+            orders = Order.query.all()
+            order_list = []
+
+            for order in orders:
+                order_data = {
+                    'id': order.id,
+                    'customerFirstName': order.customerFirstName,
+                    'customerLastName': order.customerLastName,
+                    'customerEmail': order.customerEmail,
+                    'address': order.address,
+                    'town': order.town,
+                    'phone': order.phone,
+                    'deliverycost': order.deliverycost,
+                    'original_total': order.original_total,
+                    'status': order.status,
+                    'transaction_date': order.transaction_date,
+                    'payment_reference': order.payment_reference,
+                    'discount_code_applied': order.discount_code_applied,
+                    'discount_percentage': order.discount_percentage,
+                    'discounted_total': order.discounted_total,
+                    'orderitems': [{'id': item.id, 'product_id': item.product_id, 'quantity': item.quantity} for item in order.orderitems]
+                }
+                order_list.append(order_data)
+
+            return make_response(jsonify(order_list), 200)
+        except Exception as e:
+            return make_response(jsonify({"error": str(e)}), 500)
+        
 @ns.route('/verify-payment')
 class VerifyPayment(Resource):
     @jwt_required()
@@ -930,7 +947,7 @@ class PaystackWebhook(Resource):
 
             if data['event'] == 'charge.success':
                 reference = data['data']['metadata']['order_id']
-                order = Order.query.filter_by(id=reference).first()  # Fetch Order using order_id
+                order = Order.query.filter_by(id=reference).first() 
                 app.logger.info(f"Payment reference received: {reference}")
 
                 if order:
@@ -943,7 +960,7 @@ class PaystackWebhook(Resource):
 
                     time_difference = current_time - payment_time
 
-                    if time_difference.total_seconds() <= 300:  # 300 seconds = 5 minutes
+                    if time_difference.total_seconds() <= 300:  # 300 seconds
                         order.status = 'Paid'
                         db.session.commit()
 
@@ -1001,36 +1018,9 @@ class PaystackWebhook(Resource):
         except Exception as e:
             app.logger.error(f"Error processing webhook: {str(e)}")
             return make_response(jsonify({"error": "An error occurred while processing the webhook"}), 500)
-        
-@ns.route('/create-order')
-class CreatesOrderIdTransaction(Resource):
-    @jwt_required()
-    def post(self):
-        data = request.get_json()
-
-        session_token = get_jwt_identity()
-
-        order = Order(
-            customerFirstName=data['customerFirstName'],
-            customerLastName=data['customerLastName'],
-            customerEmail=data['customerEmail'],
-            town=data['town'],
-            phone=data['phone'],
-            address=data['address'],
-            deliverycost=data['deliverycost'],
-            status='Pending',
-            discounted_total=data['discounted_total'],
-            discount_percentage=data['discount_percentage'],
-            original_total=data['original_total'],
-            discount_code_applied=data['discount_code_applied'],
-            session_token=session_token
-        )
-        db.session.add(order)
-        db.session.commit()
-
-        return make_response(jsonify({"order_id": order.id}), 201)
 
 @ns.route("/discount/add")
+@jwt_required()
 class AddDiscount(Resource):
     def post(self):
         data = request.get_json()
@@ -1054,6 +1044,7 @@ class AddDiscount(Resource):
         return make_response(jsonify({"message": "Discount code added successfully"}), 201)
     
 @ns.route("/discount/validate/<string:code>")
+@jwt_required()
 class ValidateDiscount(Resource):
         def get(self, code):
             discount = DiscountCode.query.filter_by(code=code).first()
