@@ -3,7 +3,7 @@ from sqlalchemy_serializer import SerializerMixin
 from sqlalchemy import CheckConstraint
 import re
 from sqlalchemy.orm import validates
-import datetime
+from datetime import datetime, timezone
 
 db = SQLAlchemy()
 
@@ -64,6 +64,8 @@ class ProductVariation(db.Model, SerializerMixin):
     price = db.Column(db.Integer())
     product_id = db.Column(db.ForeignKey("products.id"), nullable=False)
 
+    cartitems = db.relationship('CartItem', backref='product_variations', lazy=True)
+
     @validates('size')
     def validate_size(self, key, size):
         if not size:
@@ -89,8 +91,18 @@ class CartItem(db.Model, SerializerMixin):
     id = db.Column(db.Integer, primary_key=True)
     quantity = db.Column(db.Integer())
     session_id = db.Column(db.String(128))
+    price = db.Column(db.Integer())
+    status = db.Column(db.String(64), default='unpaid', nullable=True)
 
     product_id = db.Column(db.ForeignKey('products.id'), nullable=False)
+    variation_id = db.Column(db.ForeignKey('product_variations.id'), nullable=True)
+    order_id = db.Column(db.ForeignKey('orders.id'), nullable=True)
+
+    product = db.relationship('Product', backref='cart_items')
+    variation = db.relationship('ProductVariation', backref='cart_items')
+
+    orderitems = db.relationship('OrderItem', backref='cartitems', lazy=True)
+
 
 class Order(db.Model, SerializerMixin):
     __tablename__ = "orders"
@@ -101,6 +113,15 @@ class Order(db.Model, SerializerMixin):
     address = db.Column(db.String(96), nullable=False)
     town = db.Column(db.String(24), nullable=False)
     phone = db.Column(db.String(30), nullable=False)
+    deliverycost = db.Column(db.Integer(), nullable=True)
+    original_total = db.Column(db.Float, nullable=True, default=0.0)  # Total price of the order
+    status = db.Column(db.String(20), nullable=True)  # Status of the order: Pending, Paid, Shipped, etc.
+    transaction_date = db.Column(db.DateTime, nullable=True, default=datetime.utcnow)
+    payment_reference = db.Column(db.String(100), nullable=True, unique=True)
+    discount_code_applied = db.Column(db.String(128), nullable=True)
+    discount_percentage = db.Column(db.Float, nullable=True, default=0.0)
+    discounted_total = db.Column(db.Float, nullable=True)
+    session_token = db.Column(db.String(256), nullable=True)
 
     orderitems = db.relationship('OrderItem', backref='orders', lazy=True)
 
@@ -111,6 +132,10 @@ class OrderItem(db.Model, SerializerMixin):
 
     order_id = db.Column(db.ForeignKey('orders.id'))
     product_id = db.Column(db.ForeignKey('products.id'))
+    cart_item_id = db.Column(db.Integer, db.ForeignKey('cartitems.id'))
+
+    order = db.relationship('Order', back_populates='orderitems')
+    product = db.relationship('Product', back_populates='orderitems')
 
 class Appointment(db.Model, SerializerMixin):
     __tablename__ = "appointments"
@@ -119,6 +144,19 @@ class Appointment(db.Model, SerializerMixin):
     customer_email = db.Column(db.String(128), nullable=False)
     customer_phone = db.Column(db.String(30), nullable=False)
     appointment_date = db.Column(db.DateTime, nullable=False)
+    appointment_type = db.Column(db.String(128), nullable=False)
+
+class CustomerEmails(db.Model, SerializerMixin):
+    __tablename__ = "customeremails"
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(128), nullable=False)
+
+class DiscountCode(db.Model, SerializerMixin):
+    __tablename__ = "discountcodes"
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(128), unique=True, nullable=False)
+    discount_percentage = db.Column(db.Float, nullable=False)
+    expiration_date = db.Column(db.DateTime, nullable=False, default=datetime.now(timezone.utc)) 
 
 
 # CheckConstraint
