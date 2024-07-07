@@ -918,6 +918,7 @@ class PaystackWebhook(Resource):
 
                     if time_difference.total_seconds() <= 300:  # 300 seconds
                         order.status = 'Paid'
+                        order.channel = data['data']['channel']
                         db.session.commit()
 
                         # Fetch CartItems associated with the Order's session_token

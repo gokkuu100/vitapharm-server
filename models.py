@@ -122,6 +122,7 @@ class Order(db.Model, SerializerMixin):
     discount_percentage = db.Column(db.Float, nullable=True, default=0.0)
     discounted_total = db.Column(db.Float, nullable=True)
     session_token = db.Column(db.String(256), nullable=True)
+    channel = db.Column(db.String(64), nullable=True) 
 
     orderitems = db.relationship('OrderItem', backref='orders', lazy=True)
 
