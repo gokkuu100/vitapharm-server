@@ -8,19 +8,14 @@ from flask_bcrypt import Bcrypt
 from models import Admin, db, Product, Image, CartItem, Appointment, Order, OrderItem, ProductVariation, CustomerEmails, DiscountCode
 from caching import cache
 import base64
-import datetime
 import json
-import jwt
 import secrets
 from sqlalchemy import or_
 from sqlalchemy.orm import joinedload
-import time
 import requests
-from requests.auth import HTTPBasicAuth
 import re
 import hashlib
 import hmac
-from dotenv import load_dotenv
 import logging
 
 logger = logging.getLogger(__name__)
