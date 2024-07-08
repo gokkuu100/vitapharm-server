@@ -3,7 +3,7 @@ from flask_restx import Resource, Namespace
 from flask_mail import Message
 from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required, create_refresh_token
 from jwt.exceptions import DecodeError
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 from flask_bcrypt import Bcrypt
 from models import Admin, db, Product, Image, CartItem, Appointment, Order, OrderItem, ProductVariation, CustomerEmails, DiscountCode
 from caching import cache
@@ -227,6 +227,9 @@ class NewProduct(Resource):
                     "category": product.category,
                     "sub_category": product.sub_category,
                     "admin_id": product.admin_id,
+                    "deal_price": product.deal_price,
+                    "deal_start_time": product.deal_start_time,
+                    "deal_end_time": product.deal_end_time,
                     "variations": [],
                     "images": []
                 }
@@ -238,7 +241,6 @@ class NewProduct(Resource):
                         "price": item.price
                     }
                     product_data["variations"].append(data)
-                products_list.append(product_data)
 
                 images = Image.query.filter_by(product_id=product.id).all()
                 for image in images:
@@ -274,6 +276,9 @@ class SingleProduct(Resource):
                 "category": singleProduct.category,
                 "sub-category": singleProduct.sub_category,
                 "admin_id": singleProduct.admin_id,
+                "deal_price": singleProduct.deal_price,
+                "deal_start_time": singleProduct.deal_start_time,
+                "deal_end_time": singleProduct.deal_end_time,
                 "variations": [],
                 "images": []
             }
@@ -578,7 +583,7 @@ class ProductSearch(Resource):
 class ProductsOnOffer(Resource):
     def get(self):
         try:
-            today = datetime.date.today()
+            today = date.today()
 
             # queries products within the deal price dates
             products = Product.query.filter(
@@ -597,11 +602,14 @@ class ProductsOnOffer(Resource):
                     "id": product.id,
                     "name": product.name,
                     "description": product.description,
-                    "deal_price": product.deal_price, 
+                    "deal_price": product.deal_price,
+                    "deal_start_time": product.deal_start_time,
+                    "deal_end_time": product.deal_end_time, 
                     "brand": product.brand,
                     "category": product.category,
                     "sub_category": product.sub_category,
                     "admin_id": product.admin_id,
+                    "variations": [],
                     "images": []
                 }
                 variations = ProductVariation.query.filter_by(product_id=product.id).all()
@@ -659,7 +667,7 @@ class BookAppointment(Resource):
             db.session.add(new_appointment)
             db.session.commit()
             
-            msg = Message('Appointment Booking Confirmation', sender='Vitapharm <princewalter422@gmail.com>', recipients=[customer_email])
+            msg = Message('Appointment Booking Confirmation', sender='Vitapharm <princewalter422@gmail.com>', recipients=[customer_email], cc='')
             msg.body = f"""Hi {customer_name}, This email confirms your request for an appointment booking at Vitapharm. Kindly wait as you receive a confirmation call from us."""
             mail.send(msg)
 
