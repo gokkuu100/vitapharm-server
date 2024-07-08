@@ -230,6 +230,7 @@ class NewProduct(Resource):
                     "deal_price": product.deal_price,
                     "deal_start_time": product.deal_start_time,
                     "deal_end_time": product.deal_end_time,
+                    "created_at": product.created_at,
                     "variations": [],
                     "images": []
                 }
@@ -279,6 +280,7 @@ class SingleProduct(Resource):
                 "deal_price": singleProduct.deal_price,
                 "deal_start_time": singleProduct.deal_start_time,
                 "deal_end_time": singleProduct.deal_end_time,
+                "created_at": singleProduct.created_at,
                 "variations": [],
                 "images": []
             }
@@ -356,12 +358,12 @@ class SingleProduct(Resource):
                 return make_response(jsonify({"error": "Product not found"}), 404)
             
             # deletes variations
-            variations = ProductVariation.query.filter_by(productId=product.id).all()
+            variations = ProductVariation.query.filter_by(product_id=product.id).all()
             for data in variations:
                 db.session.delete(data)
 
             # deletes image
-            images = Image.query.filter_by(productId=product.id).all()
+            images = Image.query.filter_by(product_id=product.id).all()
             for image in images:
                 db.session.delete(image)
 
@@ -373,6 +375,33 @@ class SingleProduct(Resource):
         except Exception as e:
             db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
+        
+@ns.route("/products/<int:productId>/images")
+class AddProductImages(Resource):
+    def post(self, productId):
+        try:
+            product = Product.query.get(productId)
+            if not product:
+                return make_response(jsonify({"error": "Product not found"}), 404)
+            
+            images = request.files.getlist("images")
+            if not images:
+                return make_response(jsonify({"error": "No images provided"}), 400)
+
+            for image in images:
+                if image.filename != '':
+                    image_data = image.read()
+                    new_image = Image(data=image_data, product_id=product.id)
+                    db.session.add(new_image)
+
+            db.session.commit()
+
+            return make_response(jsonify({"message": "Images added successfully"}), 201)
+        
+        except Exception as e:
+            db.session.rollback()
+            return make_response(jsonify({"error": str(e)}), 500)
+        
         
 # adds items to cart
 @ns.route("/cart/add")
