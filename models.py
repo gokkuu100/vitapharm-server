@@ -37,6 +37,7 @@ class Product(db.Model, SerializerMixin):
     deal_start_time = db.Column(db.DateTime(), nullable=True, default=None)
     deal_end_time = db.Column(db.DateTime(), nullable=True, default=None)
     admin_id = db.Column(db.ForeignKey("admin.id"), nullable=False)
+    created_at = db.Column(db.DateTime(), default=datetime.now(timezone.utc))
 
     cartitems = db.relationship('CartItem', backref='products', lazy=True)
     orderitems = db.relationship('OrderItem', backref='products', lazy=True)
@@ -116,7 +117,7 @@ class Order(db.Model, SerializerMixin):
     deliverycost = db.Column(db.Integer(), nullable=True)
     original_total = db.Column(db.Float, nullable=True, default=0.0)  # Total price of the order
     status = db.Column(db.String(20), nullable=True)  # Status of the order: Pending, Paid, Shipped, etc.
-    transaction_date = db.Column(db.DateTime, nullable=True, default=datetime.utcnow)
+    transaction_date = db.Column(db.DateTime, nullable=True, default=datetime.now(timezone.utc))
     payment_reference = db.Column(db.String(100), nullable=True, unique=True)
     discount_code_applied = db.Column(db.String(128), nullable=True)
     discount_percentage = db.Column(db.Float, nullable=True, default=0.0)
