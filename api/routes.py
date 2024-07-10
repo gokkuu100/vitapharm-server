@@ -3,7 +3,7 @@ from flask_restx import Resource, Namespace
 from flask_mail import Message
 from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required, create_refresh_token
 from jwt.exceptions import DecodeError
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone, date
 from flask_bcrypt import Bcrypt
 from models import Admin, db, Product, Image, CartItem, Appointment, Order, OrderItem, ProductVariation, CustomerEmails, DiscountCode
 from datetime import datetime, timezone, timedelta
@@ -14,7 +14,6 @@ from sqlalchemy.orm import joinedload
 import logging
 import time
 import requests
-from requests.auth import HTTPBasicAuth
 import re
 import hashlib
 import hmac
@@ -29,15 +28,6 @@ load_dotenv()
 
 
 PAYSTACK_SECRET_KEY = 'sk_test_bb4c6c67d587b34d9c23994bdbeb202d2715b3b7'
-
-#darajaAPI
-def getAccessToken():
-    consumer_key = "xyyfojxRcUqE57AMT1qAlc6WLKSXZGGzwUReLA2uCQAbmqaN"
-    consumer_secret = "cl8uGswLYcvNAEQZDQxLBfadKxJXp8oMANWy4P8OTqdcT7V8vpDjckWyDxzAYwgZ"
-    api_URL = "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
-    r = requests.get(api_URL, auth=HTTPBasicAuth(consumer_key, consumer_secret))
-    my_access_token = r.json()['access_token']
-    return my_access_token
 
 # Generates JWT token for session
 def generate_session_token():
@@ -396,6 +386,27 @@ class SingleProduct(Resource):
             db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
         
+@ns.route("/products/<int:product_id>/images")
+class AddProductImages(Resource):
+    @jwt_required(optional=True)
+    def post(self, product_id):
+        try:
+            product = Product.query.get(product_id)
+            if not product:
+                return make_response(jsonify({"error": "Product not found"}), 404)
+            
+            images = request.files.getlist("images")
+            if not images:
+                return make_response(jsonify({"error": "No images provided"}), 400)
+            
+            product.save_images(images, 'vitapharms3')
+            db.session.commit()
+            
+            return make_response(jsonify({"message": "Images added successfully"}), 201)
+        except Exception as e:
+            db.session.rollback()
+            return make_response(jsonify({"error": str(e)}), 500)
+        
 # adds items to cart
 @ns.route("/cart/add")
 class AddToCart(Resource):
@@ -602,7 +613,7 @@ class ProductsOnOffer(Resource):
     @jwt_required(optional=True)
     def get(self):
         try:
-            today = datetime.date.today()
+            today = date.today()
 
             # queries products within the deal price dates
             products = Product.query.filter(
@@ -622,6 +633,8 @@ class ProductsOnOffer(Resource):
                     "name": product.name,
                     "description": product.description,
                     "deal_price": product.deal_price, 
+                    "deal_start_time": product.deal_start_time,
+                    "deal_end_time": product.deal_end_time, 
                     "brand": product.brand,
                     "category": product.category,
                     "sub_category": product.sub_category,
@@ -1020,8 +1033,8 @@ class PaystackWebhook(Resource):
             return make_response(jsonify({"error": "An error occurred while processing the webhook"}), 500)
 
 @ns.route("/discount/add")
-@jwt_required()
 class AddDiscount(Resource):
+    @jwt_required()
     def post(self):
         data = request.get_json()
         code = data.get('code')
@@ -1044,8 +1057,8 @@ class AddDiscount(Resource):
         return make_response(jsonify({"message": "Discount code added successfully"}), 201)
     
 @ns.route("/discount/validate/<string:code>")
-@jwt_required()
 class ValidateDiscount(Resource):
+        @jwt_required()
         def get(self, code):
             discount = DiscountCode.query.filter_by(code=code).first()
             if discount:
