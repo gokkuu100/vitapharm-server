@@ -1,8 +1,8 @@
-"""creating tables in aws
+"""create new tables final
 
-Revision ID: 2ab8894103f5
+Revision ID: 3212adaaf036
 Revises: 
-Create Date: 2024-07-10 11:27:59.127737
+Create Date: 2024-07-10 14:18:42.354709
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '2ab8894103f5'
+revision = '3212adaaf036'
 down_revision = None
 branch_labels = None
 depends_on = None

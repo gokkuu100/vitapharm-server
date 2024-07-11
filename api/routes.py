@@ -199,7 +199,7 @@ class NewProduct(Resource):
 
             # save images
             images = request.files.getlist("images")
-            new_product.save_images(images, 'vitapharms3')
+            new_product.save_images(images, 'vitapharms3bucket')
 
             db.session.commit()
 
@@ -326,10 +326,10 @@ class SingleProduct(Resource):
             if not product:
                 return make_response(jsonify({"error": "Product not found"}), 404)
             
-            # request data
+            # Request data
             data = request.get_json()
-
-            # iterates through the data and updates
+            
+            # Update product fields
             for field, value in data.items():
                 if field == 'deal_price':
                     product.deal_price = value
@@ -349,9 +349,29 @@ class SingleProduct(Resource):
                         product.deal_end_time = deal_end_time
                     except ValueError:
                         return make_response(jsonify({"error": "Invalid date format for deal_end_time"}), 400)
+                elif field == 'variations':
+                    # Handle product variations
+                    for variation in value:
+                        if 'id' in variation:
+                            existing_variation = ProductVariation.query.get(variation['id'])
+                            if existing_variation:
+                                existing_variation.size = variation['size']
+                                existing_variation.price = variation['price']
+                        else:
+                            new_variation = ProductVariation(size=variation['size'], price=variation['price'], product_id=product.id)
+                            db.session.add(new_variation)
+                elif field == 'images':
+                    # Handle product images
+                    for image in value:
+                        if 'id' in image:
+                            existing_image = Image.query.get(image['id'])
+                            if existing_image:
+                                existing_image.url = image['url']
+                        else:
+                            new_image = Image(url=image['url'], product_id=product.id)
+                            db.session.add(new_image)
                 else:
-                    # hanldes other field updates too
-                    setattr(product, field, value)  
+                    setattr(product, field, value)
 
             db.session.commit()
 
@@ -368,12 +388,12 @@ class SingleProduct(Resource):
                 return make_response(jsonify({"error": "Product not found"}), 404)
             
             # deletes variations
-            variations = ProductVariation.query.filter_by(productId=product.id).all()
+            variations = ProductVariation.query.filter_by(product_id=product.id).all()
             for data in variations:
                 db.session.delete(data)
 
             # deletes image
-            images = Image.query.filter_by(productId=product.id).all()
+            images = Image.query.filter_by(product_id=product.id).all()
             for image in images:
                 db.session.delete(image)
 
@@ -399,11 +419,47 @@ class AddProductImages(Resource):
             if not images:
                 return make_response(jsonify({"error": "No images provided"}), 400)
             
-            product.save_images(images, 'vitapharms3')
+            product.save_images(images, 'vitapharms3bucket')
             db.session.commit()
             
             return make_response(jsonify({"message": "Images added successfully"}), 201)
         except Exception as e:
+            db.session.rollback()
+            return make_response(jsonify({"error": str(e)}), 500)
+
+@ns.route("/images/<int:imageId>")
+class SingleImage(Resource):
+    def get(self, imageId):
+        try:
+            image = Image.query.get(imageId)
+            if not image:
+                return make_response(jsonify({"message": "Image not found"}), 404)
+
+            # Image data
+            image_data = {
+                "id": image.id,
+                "url": image.url,
+                "product_id": image.product_id
+            }
+
+            return make_response(jsonify(image_data), 200)
+        except Exception as e:
+            print("Error fetching image")
+            db.session.rollback()
+            return make_response(jsonify({"error": str(e)}), 500)
+    
+    def delete(self, imageId):
+        try:
+            image = Image.query.get(imageId)
+            if not image:
+                return make_response(jsonify({"message": "Image not found"}), 404)
+
+            db.session.delete(image)
+            db.session.commit()
+
+            return make_response(jsonify({"message": "Image deleted successfully"}), 200)
+        except Exception as e:
+            print("Error deleting image")
             db.session.rollback()
             return make_response(jsonify({"error": str(e)}), 500)
         
@@ -670,7 +726,7 @@ class ProductsOnOffer(Resource):
 class BookAppointment(Resource):
     @jwt_required(optional=True)
     def post(self):
-        from app import mail
+        from application import mail
         try:
             if request.is_json:
                 data = request.get_json()
@@ -734,7 +790,7 @@ class PlaceOrder(Resource):
     @jwt_required()
     def post(self):
         try:
-            from app import mail
+            from application import mail
 
             # retrieves session ID from cookies
             session_id = get_jwt_identity()
@@ -950,7 +1006,7 @@ class VerifyPayment(Resource):
 @ns.route('/webhook')
 class PaystackWebhook(Resource):
     def post(self):
-        from app import mail, app
+        from application import mail, app
         try:
             if not verify_paystack_signature(request):
                 app.logger.warning("Invalid Paystack signature")
