@@ -234,6 +234,9 @@ class NewProduct(Resource):
                     "category": product.category,
                     "sub_category": product.sub_category,
                     "admin_id": product.admin_id,
+                    "deal_price": product.deal_price,
+                    "deal_start_time": product.deal_start_time,
+                    "deal_end_time": product.deal_end_time,
                     "variations": [],
                     "images": []
                 }
