@@ -237,6 +237,7 @@ class NewProduct(Resource):
                     "deal_price": product.deal_price,
                     "deal_start_time": product.deal_start_time,
                     "deal_end_time": product.deal_end_time,
+                    "created_at": product.created_at,
                     "variations": [],
                     "images": []
                 }
@@ -294,6 +295,7 @@ class SingleProduct(Resource):
                 "deal_price": product.deal_price,
                 "deal_start_time": product.deal_start_time,
                 "deal_end_time": product.deal_end_time,
+                "created_at": product.created_at,
                 "variations": [],
                 "images": []
             }
@@ -693,7 +695,8 @@ class ProductsOnOffer(Resource):
                     "description": product.description,
                     "deal_price": product.deal_price, 
                     "deal_start_time": product.deal_start_time,
-                    "deal_end_time": product.deal_end_time, 
+                    "deal_end_time": product.deal_end_time,
+                    "created_at": product.created_at,
                     "brand": product.brand,
                     "category": product.category,
                     "sub_category": product.sub_category,
