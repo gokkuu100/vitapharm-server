@@ -744,8 +744,9 @@ class BookAppointment(Resource):
             customer_phone = data.get('customer_phone')
             appointment_date = data.get('appointment_date')
             appointment_type = data.get('appointment_type')
+            created_at = data.get('created_at')
 
-            if not all([customer_name, customer_email, customer_phone, appointment_date, appointment_type]):
+            if not all([customer_name, customer_email, customer_phone, appointment_date, appointment_type, created_at]):
                 return make_response(jsonify({"error": "Missing fields"}), 400)
             
             new_appointment = Appointment(
@@ -753,7 +754,8 @@ class BookAppointment(Resource):
                 customer_email=customer_email,
                 customer_phone=customer_phone,
                 appointment_date=appointment_date,
-                appointment_type=appointment_type
+                appointment_type=appointment_type,
+                created_at=created_at
             )
 
             db.session.add(new_appointment)
@@ -1102,8 +1104,9 @@ class AddDiscount(Resource):
         code = data.get('code')
         discount_percentage = data.get('discount_percentage')
         expiration_date = data.get('expiration_date')
+        created_at = data.get('created_at')
 
-        if not all([code, discount_percentage, expiration_date]):
+        if not all([code, discount_percentage, expiration_date, created_at]):
             return make_response(jsonify({"error": "Missing discount code information"}), 400)
         
         expiration_date = datetime.strptime(expiration_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
@@ -1111,7 +1114,8 @@ class AddDiscount(Resource):
         new_discount = DiscountCode(
             code=code,
             discount_percentage=discount_percentage,
-            expiration_date=expiration_date
+            expiration_date=expiration_date,
+            created_at=created_at
         )
         db.session.add(new_discount)
         db.session.commit()

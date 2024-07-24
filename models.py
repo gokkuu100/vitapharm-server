@@ -162,6 +162,7 @@ class Appointment(db.Model, SerializerMixin):
     customer_phone = db.Column(db.String(30), nullable=False)
     appointment_type = db.Column(db.String(128), nullable=False)
     appointment_date = db.Column(db.DateTime, nullable=False)
+    created_at = db.Column(db.DateTime(), default=datetime.now(timezone.utc))
     
 
 class CustomerEmails(db.Model, SerializerMixin):
@@ -176,6 +177,7 @@ class DiscountCode(db.Model, SerializerMixin):
     code = db.Column(db.String(128), unique=True, nullable=False)
     discount_percentage = db.Column(db.Float, nullable=False)
     expiration_date = db.Column(db.DateTime, nullable=False, default=datetime.now(timezone.utc)) 
+    created_at = db.Column(db.DateTime(), default=datetime.now(timezone.utc))
     
 
 
