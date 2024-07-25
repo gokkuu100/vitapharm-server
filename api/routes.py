@@ -341,8 +341,6 @@ class SingleProduct(Resource):
                 elif field == 'deal_start_time':
                     try:
                         deal_start_time = datetime.strptime(value, "%Y-%m-%d")
-                        if product.deal_end_time and deal_start_time > product.deal_end_time:
-                            return make_response(jsonify({"error": "Deal start time cannot be after deal end time"}), 400)
                         product.deal_start_time = deal_start_time
                     except ValueError:
                         return make_response(jsonify({"error": "Invalid date format for deal_start_time"}), 400)
